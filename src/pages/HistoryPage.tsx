@@ -12,27 +12,20 @@ interface Article {
   score: number;
 }
 
-const MOCK_ARTICLES: Article[] = [
-  { id: "1", title: "DeepSeek R2 发布：国产大模型首次超越 GPT-4o，我们该怎么看？", date: "2026-04-08", wordCount: 1842, framework: "热点解读", score: 82 },
-  { id: "2", title: "用 AI 写作的人越来越多，但真正被看见的还是那些有「自己的声音」的人", date: "2026-04-05", wordCount: 2103, framework: "纯观点", score: 91 },
-  { id: "3", title: "2025年最值得入手的5款AI工具（真实使用3个月后的感受）", date: "2026-04-01", wordCount: 1756, framework: "清单型", score: 78 },
-  { id: "4", title: "一个普通人如何靠内容创作月入过万？我走访了 10 个真实案例", date: "2026-03-28", wordCount: 2340, framework: "故事型", score: 88 },
-  { id: "5", title: "Claude 3.7 vs GPT-4o：写公众号文章，谁更好用？", date: "2026-03-21", wordCount: 1920, framework: "对比型", score: 85 },
-];
-
-function scoreColor(score: number) {
-  if (score >= 90) return "text-green-600";
-  if (score >= 80) return "text-blue-600";
-  if (score >= 70) return "text-amber-600";
-  return "text-red-500";
-}
-
 export function HistoryPage() {
   const [search, setSearch] = useState("");
+  const [articles] = useState<Article[]>([]);
 
-  const filtered = MOCK_ARTICLES.filter((a) =>
+  const filtered = articles.filter((a) =>
     a.title.toLowerCase().includes(search.toLowerCase())
   );
+
+  function scoreColor(score: number) {
+    if (score >= 90) return "text-green-600";
+    if (score >= 80) return "text-blue-600";
+    if (score >= 70) return "text-amber-600";
+    return "text-red-500";
+  }
 
   return (
     <div className="flex flex-col h-full">

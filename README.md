@@ -225,6 +225,19 @@ lsof -i :1420
 
 </details>
 
+<details>
+<summary>macOS 提示"已损坏，无法打开"</summary>
+
+这是 macOS Gatekeeper 对未签名应用的拦截。打开终端执行：
+
+```bash
+xattr -cr /Applications/WeWrite.app
+```
+
+或在「系统设置 → 隐私与安全性」中点击「仍要打开」。
+
+</details>
+
 ## 致谢
 
 本项目的写作流程设计参考了 [WeWrite](https://github.com/oaker-io/wewrite)，去 AI 化引擎基于 [humanizer](https://github.com/blader/humanizer)。感谢两个项目作者的开源贡献。

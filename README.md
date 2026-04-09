@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)]()
 
-从热点选题到一键发布，9 步完成公众号文章创作。
+从热点选题到一键发布，9 步完成公众号文章创作。基于 [WeWrite CLI](https://github.com/oaker-io/wewrite) 开发的桌面版本。
 
 [下载安装包](https://github.com/huaixia18/wewrite-desktop/releases) · [功能介绍](#核心功能) · [开发指南](#快速开始)
 
@@ -224,6 +224,10 @@ lsof -i :1420
 ```
 
 </details>
+
+## 致谢
+
+本项目的写作流程设计参考了 [WeWrite](https://github.com/oaker-io/wewrite)，去 AI 化引擎基于 [humanizer](https://github.com/blader/humanizer)。感谢两个项目作者的开源贡献。
 
 ## 贡献
 

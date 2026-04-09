@@ -2,4 +2,8 @@ pub mod articles;
 pub mod config;
 pub mod exemplars;
 pub mod humanizer;
+pub mod images;
+pub mod migrate;
 pub mod pipeline;
+pub mod search;
+pub mod wechat;

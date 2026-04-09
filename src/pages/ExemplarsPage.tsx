@@ -1,21 +1,15 @@
-import { useState } from "react";
-import { BookOpen, Plus, Trash2, Search } from "lucide-react";
+import { useState, useEffect } from "react";
+import { BookOpen, Plus, Trash2, Search, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
+import { api } from "../lib/tauri";
 
 interface Exemplar {
-  id: string;
+  id: number;
   title: string;
   category: string;
-  styleScore: number;
   importedAt: string;
 }
-
-const MOCK_EXEMPLARS: Exemplar[] = [
-  { id: "1", title: "我在 OpenAI 工作了两年，离职后才说的话", category: "hot-take", styleScore: 94, importedAt: "2026-03-15" },
-  { id: "2", title: "为什么你看了那么多干货，还是写不出好文章", category: "tech-opinion", styleScore: 89, importedAt: "2026-03-10" },
-  { id: "3", title: "那个凌晨三点还在改稿的运营，后来怎么样了", category: "story-emotional", styleScore: 92, importedAt: "2026-03-05" },
-];
 
 const CATEGORY_LABELS: Record<string, string> = {
   "hot-take": "热点观点",
@@ -26,10 +20,56 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function ExemplarsPage() {
-  const [exemplars, setExemplars] = useState(MOCK_EXEMPLARS);
+  const [exemplars, setExemplars] = useState<Exemplar[]>([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const handleDelete = (id: string) => setExemplars((prev) => prev.filter((e) => e.id !== id));
+  useEffect(() => {
+    loadExemplars();
+  }, []);
+
+  const loadExemplars = async () => {
+    setLoading(true);
+    try {
+      const data = await api.listExemplars();
+      setExemplars(data.map((e) => ({
+        id: e.id,
+        title: e.title,
+        category: e.category,
+        importedAt: e.importedAt.slice(0, 10),
+      })));
+    } catch {
+      // DB might not exist yet, show empty
+      setExemplars([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImport = async () => {
+    // Open file picker via Tauri dialog
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: true,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!selected) return;
+      const files = Array.isArray(selected) ? selected : [selected];
+      for (const path of files) {
+        const name = path.split("/").pop()?.replace(/\.md$/, "") || "未命名";
+        await api.importExemplar(name, "general", path);
+      }
+      await loadExemplars();
+    } catch (e) {
+      console.error("导入失败:", e);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    await api.deleteExemplar(id);
+    await loadExemplars();
+  };
 
   const filtered = exemplars.filter((e) =>
     e.title.toLowerCase().includes(search.toLowerCase())
@@ -50,7 +90,7 @@ export function ExemplarsPage() {
               className="w-52 pl-8 pr-3 py-1.5 text-[13px] bg-[var(--color-light-bg)] border border-gray-200 rounded-[var(--radius-input)] outline-none focus:border-[var(--color-apple-blue)] focus:ring-2 focus:ring-blue-100"
             />
           </div>
-          <Button size="sm" variant="primary" className="gap-1.5">
+          <Button size="sm" variant="primary" className="gap-1.5" onClick={handleImport}>
             <Plus size={13} />
             导入范文
           </Button>
@@ -59,38 +99,22 @@ export function ExemplarsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 size={24} className="animate-spin text-gray-300" />
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-[var(--color-text-tertiary)]">
             <BookOpen size={32} className="mb-3 opacity-30" />
             <p className="text-[14px] mb-1">还没有范文</p>
             <p className="text-[12px] text-center max-w-xs">导入你已发布的文章，WeWrite 会学习你的写作风格</p>
-            <Button size="md" variant="primary" className="mt-4 gap-1.5">
+            <Button size="md" variant="primary" className="mt-4 gap-1.5" onClick={handleImport}>
               <Plus size={14} />
               导入第一篇范文
             </Button>
           </div>
         ) : (
           <div className="max-w-3xl mx-auto">
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-5">
-              <div className="p-3 rounded-[var(--radius-sm)] bg-white shadow-[var(--shadow-card)] text-center">
-                <p className="text-[22px] font-bold text-[var(--color-near-black)]">{exemplars.length}</p>
-                <p className="text-[11px] text-[var(--color-text-tertiary)]">范文总数</p>
-              </div>
-              <div className="p-3 rounded-[var(--radius-sm)] bg-white shadow-[var(--shadow-card)] text-center">
-                <p className="text-[22px] font-bold text-[var(--color-near-black)]">
-                  {Math.round(exemplars.reduce((s, e) => s + e.styleScore, 0) / exemplars.length)}
-                </p>
-                <p className="text-[11px] text-[var(--color-text-tertiary)]">平均风格分</p>
-              </div>
-              <div className="p-3 rounded-[var(--radius-sm)] bg-white shadow-[var(--shadow-card)] text-center">
-                <p className="text-[22px] font-bold text-[var(--color-near-black)]">
-                  {new Set(exemplars.map((e) => e.category)).size}
-                </p>
-                <p className="text-[11px] text-[var(--color-text-tertiary)]">覆盖风格</p>
-              </div>
-            </div>
-
             {/* Table */}
             <div className="bg-white rounded-[var(--radius-lg)] shadow-[var(--shadow-card)] overflow-hidden">
               <table className="w-full">
@@ -98,7 +122,6 @@ export function ExemplarsPage() {
                   <tr className="border-b border-gray-100">
                     <th className="text-left px-4 py-3 text-[11px] font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider">标题</th>
                     <th className="text-left px-4 py-3 text-[11px] font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider w-28">分类</th>
-                    <th className="text-right px-4 py-3 text-[11px] font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider w-20">风格分</th>
                     <th className="text-right px-4 py-3 text-[11px] font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider w-28">导入时间</th>
                     <th className="w-12"></th>
                   </tr>
@@ -116,9 +139,6 @@ export function ExemplarsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant="gray">{CATEGORY_LABELS[exemplar.category] ?? exemplar.category}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-[13px] font-semibold text-green-600">{exemplar.styleScore}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="text-[12px] text-[var(--color-text-tertiary)]">{exemplar.importedAt}</span>

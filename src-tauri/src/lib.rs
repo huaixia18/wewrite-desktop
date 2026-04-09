@@ -13,12 +13,20 @@ pub fn run() {
             commands::articles::list_articles,
             commands::articles::open_article_folder,
             commands::articles::get_default_save_path,
+            commands::articles::save_article,
             commands::humanizer::humanize,
             commands::humanizer::analyze_text,
             commands::exemplars::list_exemplars,
             commands::exemplars::import_exemplar,
             commands::exemplars::delete_exemplar,
             commands::pipeline::run_pipeline_step,
+            commands::images::generate_image,
+            commands::wechat::verify_wechat_connection,
+            commands::migrate::migrate_articles,
+            commands::search::fetch_hotspots,
+            commands::search::seo_keywords,
+            commands::search::collect_materials,
+            commands::search::check_python_env,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

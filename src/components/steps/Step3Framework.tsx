@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Loader2, ExternalLink, CheckCircle2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { cn } from "../../lib/utils";
+import { useConfigStore } from "../../store/config";
+import { usePipelineStore } from "../../store/pipeline";
+import { api, type MaterialResult } from "../../lib/tauri";
 
 interface Framework {
   id: string;
@@ -20,20 +24,15 @@ const FRAMEWORKS: Framework[] = [
   { id: "review", name: "复盘型", description: "回顾一段经历，提炼经验和教训", recommendScore: 7 },
 ];
 
-interface Material {
-  id: string;
-  type: "data" | "quote" | "case";
-  content: string;
-  source: string;
-}
-
-const MOCK_MATERIALS: Material[] = [
-  { id: "1", type: "data", content: "2024年中国内容创作者市场规模达 4300 亿元，同比增长 23%", source: "艾瑞咨询" },
-  { id: "2", type: "quote", content: "「大多数人用 AI 写文章的方式都是错的——他们用 AI 替代思考，而不是替代打字。」", source: "@科技评论员陈明" },
-  { id: "3", type: "case", content: "博主「慢慢来也快」通过坚持日更 200 天，从 0 增长到 10 万粉丝", source: "公众号「创作者日报」" },
-  { id: "4", type: "data", content: "使用 AI 工具的创作者平均产出效率提高 3.2 倍，但内容打开率下降了 18%", source: "NewRank 2024 报告" },
-  { id: "5", type: "case", content: "Substack 上 top 100 作者中，只有 12% 表示使用 AI 辅助创作", source: "Substack 官方数据" },
-];
+const FRAMEWORK_LABELS: Record<string, string> = {
+  pain: "痛点型",
+  story: "故事型",
+  list: "清单型",
+  compare: "对比型",
+  hotspot: "热点解读",
+  opinion: "纯观点",
+  review: "复盘型",
+};
 
 interface Step3FrameworkProps {
   onNext: (frameworkId: string) => void;
@@ -41,13 +40,68 @@ interface Step3FrameworkProps {
 }
 
 export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
+  const { config } = useConfigStore();
+  const { selectedTopic, setCollectedMaterials } = usePipelineStore();
+
   const [selectedFramework, setSelectedFramework] = useState<string>("hotspot");
+  const [collecting, setCollecting] = useState(false);
+  const [materials, setMaterials] = useState<MaterialResult[]>([]);
+  const [collectError, setCollectError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+
+  const topic = selectedTopic?.title || "";
+  const keywords = selectedTopic?.keywords || [];
+
+  const handleCollectMaterials = async () => {
+    if (!config.skill_path || !topic) return;
+    setCollecting(true);
+    setCollectError(null);
+    try {
+      const result = await api.collectMaterials(
+        config.skill_path,
+        topic,
+        FRAMEWORK_LABELS[selectedFramework] || selectedFramework,
+        keywords
+      );
+      if (result.success && result.materials) {
+        setMaterials(result.materials);
+        setCollectedMaterials(result.materials);
+      } else {
+        setCollectError(result.error || "素材采集失败");
+      }
+    } catch (e) {
+      setCollectError(String(e));
+    } finally {
+      setCollecting(false);
+    }
+  };
+
+  // Auto-collect when framework changes and topic is available
+  useEffect(() => {
+    if (topic && config.skill_path && !confirmed) {
+      setMaterials([]);
+      setCollectedMaterials([]);
+    }
+  }, [selectedFramework, topic, config.skill_path]);
+
+  const handleConfirm = () => {
+    setConfirmed(true);
+  };
+
+  const handleNext = () => {
+    // Materials are already stored in the pipeline store
+    onNext(selectedFramework);
+  };
+
+  const frameworkLabel = FRAMEWORK_LABELS[selectedFramework] || selectedFramework;
 
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h2 className="text-[15px] font-semibold text-[var(--color-near-black)] mb-1">框架 + 素材</h2>
-        <p className="text-[13px] text-[var(--color-text-secondary)]">选择文章结构框架，已采集到相关素材。</p>
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          {topic ? `主题：${topic}` : "选择文章结构框架，AI 将采集真实素材后开始写作。"}
+        </p>
       </div>
 
       {/* Framework selection */}
@@ -57,7 +111,7 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
           {FRAMEWORKS.map((fw) => (
             <button
               key={fw.id}
-              onClick={() => setSelectedFramework(fw.id)}
+              onClick={() => { setSelectedFramework(fw.id); setConfirmed(false); }}
               className={cn(
                 "flex items-start gap-2 p-3 rounded-[var(--radius-sm)] text-left transition-all duration-150 border",
                 selectedFramework === fw.id
@@ -77,29 +131,93 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
         </div>
       </div>
 
-      {/* Materials */}
-      <div>
-        <p className="text-[12px] font-medium text-[var(--color-text-secondary)] mb-2 uppercase tracking-wider">采集到的素材</p>
-        <div className="flex flex-col gap-2">
-          {MOCK_MATERIALS.map((mat) => (
-            <div key={mat.id} className="flex items-start gap-2.5 p-3 rounded-[var(--radius-sm)] bg-[var(--color-light-bg)]">
-              <Badge variant={mat.type === "data" ? "blue" : mat.type === "quote" ? "green" : "yellow"} className="flex-shrink-0 mt-0.5">
-                {mat.type === "data" ? "数据" : mat.type === "quote" ? "引述" : "案例"}
-              </Badge>
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] text-[var(--color-near-black)] leading-relaxed">{mat.content}</p>
-                <p className="text-[11px] text-[var(--color-text-tertiary)] mt-0.5">来源: {mat.source}</p>
+      {/* Material collection */}
+      {topic && config.skill_path && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleCollectMaterials}
+              disabled={collecting}
+              className="gap-1.5"
+            >
+              {collecting && <Loader2 size={11} className="animate-spin" />}
+              {collecting ? "采集中…" : "采集素材"}
+            </Button>
+            <span className="text-[11px] text-[var(--color-text-tertiary)]">
+              基于「{topic}」+ {frameworkLabel} 框架搜索真实素材
+            </span>
+          </div>
+
+          {collectError && (
+            <div className="px-3 py-2 rounded-[var(--radius-sm)] bg-red-50 border border-red-200 text-[12px] text-red-600">
+              {collectError} — AI 将使用内置知识写作
+            </div>
+          )}
+
+          {materials.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="green">
+                  <CheckCircle2 size={9} /> 已采集 {materials.length} 条素材
+                </Badge>
+                <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                  将注入写作提示词，提升内容真实度
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+                {materials.map((mat, i) => (
+                  <div key={i} className="p-2 rounded-[var(--radius-sm)] bg-[var(--color-light-bg)] border border-gray-100">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[12px] font-medium text-[var(--color-near-black)] leading-snug flex-1">
+                        {mat.title}
+                      </p>
+                      {mat.url && (
+                        <a
+                          href={mat.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0 text-[var(--color-link-blue)] hover:underline"
+                        >
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5 leading-relaxed line-clamp-2">
+                      {mat.snippet}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
+          )}
         </div>
-      </div>
+      )}
+
+      {topic && !config.skill_path && (
+        <div className="px-3 py-2 rounded-[var(--radius-sm)] bg-amber-50 border border-amber-200 text-[12px] text-amber-700">
+          未配置 WeWrite Skill 路径（设置页），素材采集将使用 AI 内置知识。建议前往设置页填写。
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-1">
         <Button size="md" variant="secondary" onClick={onBack}>上一步</Button>
-        <Button size="md" variant="primary" onClick={() => onNext(selectedFramework)}>
-          开始写作
-        </Button>
+        <div className="flex items-center gap-2">
+          {topic && config.skill_path && materials.length > 0 && !confirmed && (
+            <Button size="md" variant="secondary" onClick={handleConfirm}>
+              确认素材
+            </Button>
+          )}
+          <Button
+            size="md"
+            variant="primary"
+            onClick={handleNext}
+            disabled={collecting}
+          >
+            {topic ? "开始写作" : "下一步"}
+          </Button>
+        </div>
       </div>
     </div>
   );

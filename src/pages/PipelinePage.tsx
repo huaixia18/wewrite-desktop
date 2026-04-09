@@ -23,7 +23,12 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 export function PipelinePage() {
-  const { steps, currentStep, mode, setCurrentStep, setStepStatus, setMode, reset } = usePipelineStore();
+  const {
+    steps, currentStep, mode,
+    setCurrentStep, setStepStatus, setMode, reset,
+    selectedTopic, setSelectedTopic, setArticleContent, setSelectedFramework,
+    selectedFramework,
+  } = usePipelineStore();
 
   const goNext = useCallback(() => {
     setStepStatus(currentStep, "done");
@@ -91,9 +96,23 @@ export function PipelinePage() {
         <div className="max-w-2xl mx-auto">
           <Card className="shadow-[var(--shadow-card)]">
             {currentStep === 1 && <Step1EnvCheck onNext={goNext} />}
-            {currentStep === 2 && <Step2Topics onNext={goNext} onBack={goBack} />}
-            {currentStep === 3 && <Step3Framework onNext={goNext} onBack={goBack} />}
-            {currentStep === 4 && <Step4Writing onNext={goNext} onBack={goBack} />}
+            {currentStep === 2 && (
+              <Step2Topics
+                onNext={goNext}
+                onBack={goBack}
+                onTopicSelected={(t) => { setSelectedTopic({ title: t.title, framework: t.framework, keywords: t.keywords }); setSelectedFramework(null); }}
+              />
+            )}
+            {currentStep === 3 && <Step3Framework onNext={(fw) => { setSelectedFramework(fw); goNext(); }} onBack={goBack} />}
+            {currentStep === 4 && (
+              <Step4Writing
+                onNext={goNext}
+                onBack={goBack}
+                topic={selectedTopic ?? undefined}
+                framework={selectedFramework ?? selectedTopic?.framework ?? undefined}
+                onArticleReady={(content) => setArticleContent(content)}
+              />
+            )}
             {currentStep === 5 && <Step5Humanizer onNext={goNext} onBack={goBack} />}
             {currentStep === 6 && <Step6SEO onNext={goNext} onBack={goBack} />}
             {currentStep === 7 && <Step7Images onNext={goNext} onBack={goBack} />}

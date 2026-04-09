@@ -1,44 +1,68 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Sparkles, TrendingUp, Loader2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { cn } from "../../lib/utils";
+import { api } from "../../lib/tauri";
 
 interface Topic {
-  id: string;
   title: string;
   score: number;
   framework: string;
-  recommended: boolean;
   keywords: string[];
+  recommended: boolean;
+  is_hot?: boolean;
 }
-
-const MOCK_TOPICS: Topic[] = [
-  { id: "1", title: "DeepSeek R2 发布：国产大模型首次超越 GPT-4o，我们该怎么看？", score: 94, framework: "热点解读", recommended: true, keywords: ["DeepSeek", "大模型", "AI竞争"] },
-  { id: "2", title: "用 AI 写作的人越来越多，但真正被看见的还是那些有「自己的声音」的人", score: 89, framework: "纯观点", recommended: true, keywords: ["AI写作", "创作者", "个人品牌"] },
-  { id: "3", title: "2025年最值得入手的5款AI工具（真实使用3个月后的感受）", score: 87, framework: "清单型", recommended: false, keywords: ["AI工具", "效率", "测评"] },
-  { id: "4", title: "一个普通人如何靠内容创作月入过万？我走访了 10 个真实案例", score: 84, framework: "故事型", recommended: false, keywords: ["内容变现", "创作者经济"] },
-  { id: "5", title: "Claude 3.7 vs GPT-4o：写公众号文章，谁更好用？", score: 82, framework: "对比型", recommended: false, keywords: ["Claude", "GPT", "写作助手"] },
-  { id: "6", title: "我用 AI 重写了100篇历史公众号文章，数据说明了什么", score: 79, framework: "复盘型", recommended: false, keywords: ["数据分析", "内容优化"] },
-  { id: "7", title: "内容创作者最常犯的7个错误（以及我自己踩过的坑）", score: 76, framework: "清单型", recommended: false, keywords: ["内容创作", "经验分享"] },
-  { id: "8", title: "为什么你的公众号打开率越来越低？", score: 74, framework: "痛点型", recommended: false, keywords: ["打开率", "公众号运营"] },
-  { id: "9", title: "Notion AI 深度体验：它真的能替代你的写作助手吗", score: 71, framework: "对比型", recommended: false, keywords: ["Notion AI", "写作工具"] },
-  { id: "10", title: "如何让你的文章在发出3小时内破1000阅读", score: 68, framework: "清单型", recommended: false, keywords: ["传播技巧", "SEO"] },
-];
 
 interface Step2TopicsProps {
   onNext: () => void;
   onBack: () => void;
+  onTopicSelected?: (topic: Topic) => void;
 }
 
-export function Step2Topics({ onNext, onBack }: Step2TopicsProps) {
-  const [selected, setSelected] = useState<string>(MOCK_TOPICS[0].id);
-  const [regenerating, setRegenerating] = useState(false);
+export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProps) {
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [selected, setSelected] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleRegenerate = () => {
-    setRegenerating(true);
-    setSelected(MOCK_TOPICS[0].id);
-    setTimeout(() => setRegenerating(false), 1500);
+  const cancelledRef = { current: false };
+
+  const fetchTopics = useCallback(async () => {
+    cancelledRef.current = false;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.runPipelineStep(2);
+      if (cancelledRef.current) return;
+      const arr = (result.data as { topics: Topic[] }).topics;
+      if (!arr || arr.length === 0) throw new Error("AI 未返回选题");
+      setTopics(arr);
+      setSelected(0);
+    } catch (e) {
+      if (cancelledRef.current) return;
+      setError(typeof e === "string" ? e : "加载选题失败");
+    } finally {
+      if (!cancelledRef.current) setLoading(false);
+    }
+  }, []);
+
+  const cancelFetch = () => {
+    cancelledRef.current = true;
+    setLoading(false);
+    setError(null);
+  };
+
+  useEffect(() => {
+    fetchTopics();
+    return () => { cancelledRef.current = true; };
+  }, [fetchTopics]);
+
+  const handleSelect = () => {
+    if (topics[selected]) {
+      onTopicSelected?.(topics[selected]);
+    }
+    onNext();
   };
 
   return (
@@ -46,61 +70,82 @@ export function Step2Topics({ onNext, onBack }: Step2TopicsProps) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-[15px] font-semibold text-[var(--color-near-black)] mb-1">选题</h2>
-          <p className="text-[13px] text-[var(--color-text-secondary)]">基于热点和你的领域，生成了 10 个候选选题。</p>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            {loading ? "AI 正在根据你的行业和受众生成选题…" : `基于你的行业，生成了 ${topics.length} 个候选选题。`}
+          </p>
         </div>
-        <Button size="sm" variant="ghost" className="gap-1.5 text-[var(--color-apple-blue)]" onClick={handleRegenerate} disabled={regenerating}>
-          {regenerating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+        <Button size="sm" variant="ghost" className="gap-1.5 text-[var(--color-apple-blue)]" onClick={fetchTopics} disabled={loading}>
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
           重新生成
         </Button>
       </div>
 
-      <div className="flex flex-col gap-2">
-        {regenerating ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 size={28} className="animate-spin text-gray-300" />
-          </div>
-        ) : (
-          MOCK_TOPICS.map((topic) => (
-          <button
-            key={topic.id}
-            onClick={() => setSelected(topic.id)}
-            className={cn(
-              "flex items-start gap-3 p-3 rounded-[var(--radius-sm)] text-left transition-all duration-150 border",
-              selected === topic.id
-                ? "border-[var(--color-apple-blue)] bg-blue-50"
-                : "border-transparent bg-[var(--color-light-bg)] hover:border-gray-200"
-            )}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                {topic.recommended && (
-                  <Badge variant="blue">推荐</Badge>
-                )}
-                <Badge variant="gray">{topic.framework}</Badge>
-              </div>
-              <p className="text-[13px] font-medium text-[var(--color-near-black)] leading-snug">{topic.title}</p>
-              <div className="flex items-center gap-3 mt-1.5">
-                <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
-                  <TrendingUp size={11} />
-                  <span>综合评分 {topic.score}</span>
-                </div>
-                <div className="flex gap-1">
-                  {topic.keywords.map((kw) => (
-                    <span key={kw} className="text-[10px] text-[var(--color-text-tertiary)] bg-gray-100 px-1.5 py-0.5 rounded">
-                      {kw}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+      {error && (
+        <div className="px-3 py-2 rounded-[var(--radius-sm)] bg-red-50 border border-red-200 text-[12px] text-red-600">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex flex-col items-center gap-3 py-16">
+          <Loader2 size={28} className="animate-spin text-gray-300" />
+          <span className="text-[12px] text-[var(--color-text-tertiary)]">正在生成选题，可能需要 10-30 秒…</span>
+          <button onClick={cancelFetch} className="text-[12px] text-[var(--color-text-tertiary)] hover:text-red-500 underline">
+            取消
           </button>
-        ))
-        )}
-      </div>
+        </div>
+      ) : topics.length === 0 ? (
+        <div className="flex items-center justify-center py-16 text-[13px] text-[var(--color-text-tertiary)]">
+          暂无选题，请点击「重新生成」或检查 API Key 配置。
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {topics.map((topic, idx) => (
+            <button
+              key={idx}
+              onClick={() => setSelected(idx)}
+              className={cn(
+                "flex items-start gap-3 p-3 rounded-[var(--radius-sm)] text-left transition-all duration-150 border",
+                selected === idx
+                  ? "border-[var(--color-apple-blue)] bg-blue-50"
+                  : "border-transparent bg-[var(--color-light-bg)] hover:border-gray-200"
+              )}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  {topic.recommended && <Badge variant="blue">推荐</Badge>}
+                  {topic.is_hot ? (
+                    <Badge variant="red">热点</Badge>
+                  ) : (
+                    <Badge variant="gray">常青</Badge>
+                  )}
+                  <Badge variant="gray">{topic.framework}</Badge>
+                </div>
+                <p className="text-[13px] font-medium text-[var(--color-near-black)] leading-snug">{topic.title}</p>
+                <div className="flex items-center gap-3 mt-1.5">
+                  <div className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]">
+                    <TrendingUp size={11} />
+                    <span>综合评分 {topic.score}</span>
+                  </div>
+                  {topic.keywords && (
+                    <div className="flex gap-1">
+                      {topic.keywords.map((kw) => (
+                        <span key={kw} className="text-[10px] text-[var(--color-text-tertiary)] bg-gray-100 px-1.5 py-0.5 rounded">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-1">
-        <Button size="md" variant="secondary" onClick={onBack}>上一步</Button>
-        <Button size="md" variant="primary" onClick={onNext}>
+        <Button size="md" variant="secondary" onClick={onBack} disabled={loading}>上一步</Button>
+        <Button size="md" variant="primary" onClick={handleSelect} disabled={loading || topics.length === 0}>
           选这个选题
         </Button>
       </div>

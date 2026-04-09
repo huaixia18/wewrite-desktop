@@ -23,17 +23,48 @@ const STEP_TITLES = [
   "收尾",
 ];
 
+export interface SeoData {
+  selectedTitle: string;
+  digest: string;
+  tags: string[];
+}
+
+export interface MaterialResult {
+  title: string;
+  snippet: string;
+  url: string;
+}
+
+export interface HotspotData {
+  title: string;
+  hot?: number;
+  source?: string;
+  url?: string;
+}
+
 interface PipelineState {
   steps: PipelineStep[];
   currentStep: number;
   mode: PipelineMode;
   isRunning: boolean;
   articleContent: string;
+  selectedTopic: { title: string; framework: string; keywords?: string[] } | null;
+  selectedFramework: string | null;
+  savedFilePath: string | null;
+  seoData: SeoData | null;
+  hotspots: HotspotData[];
+  collectedMaterials: MaterialResult[];
   setStepStatus: (id: number, status: StepStatus, data?: unknown, error?: string) => void;
   setCurrentStep: (id: number) => void;
   setMode: (mode: PipelineMode) => void;
   setRunning: (running: boolean) => void;
   setArticleContent: (content: string) => void;
+  setSelectedTopic: (topic: { title: string; framework: string; keywords?: string[] }) => void;
+  setSelectedFramework: (framework: string | null) => void;
+  setSavedFilePath: (path: string) => void;
+  setSeoData: (data: SeoData) => void;
+  setHotspots: (hotspots: HotspotData[]) => void;
+  setCollectedMaterials: (materials: MaterialResult[]) => void;
   reset: () => void;
 }
 
@@ -49,6 +80,12 @@ export const usePipelineStore = create<PipelineState>((set) => ({
   mode: "interactive",
   isRunning: false,
   articleContent: "",
+  selectedTopic: null,
+  savedFilePath: null,
+  selectedFramework: null,
+  seoData: null,
+  hotspots: [],
+  collectedMaterials: [],
 
   setStepStatus: (id, status, data, error) =>
     set((state) => ({
@@ -61,6 +98,12 @@ export const usePipelineStore = create<PipelineState>((set) => ({
   setMode: (mode) => set({ mode }),
   setRunning: (isRunning) => set({ isRunning }),
   setArticleContent: (articleContent) => set({ articleContent }),
+  setSelectedTopic: (selectedTopic) => set({ selectedTopic }),
+  setSelectedFramework: (selectedFramework) => set({ selectedFramework }),
+  setSavedFilePath: (savedFilePath) => set({ savedFilePath }),
+  setSeoData: (seoData) => set({ seoData }),
+  setHotspots: (hotspots) => set({ hotspots }),
+  setCollectedMaterials: (materials) => set({ collectedMaterials: materials }),
 
   reset: () =>
     set({
@@ -68,5 +111,11 @@ export const usePipelineStore = create<PipelineState>((set) => ({
       currentStep: 1,
       isRunning: false,
       articleContent: "",
+      selectedTopic: null,
+      savedFilePath: null,
+      selectedFramework: null,
+      seoData: null,
+      hotspots: [],
+      collectedMaterials: [],
     }),
 }));

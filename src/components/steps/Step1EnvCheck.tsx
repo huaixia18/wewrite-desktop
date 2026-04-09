@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { CheckCircle2, XCircle, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -26,6 +27,7 @@ const INITIAL_ITEMS: CheckItem[] = [
 export function Step1EnvCheck({ onNext }: Step1EnvCheckProps) {
   const [items, setItems] = useState<CheckItem[]>(INITIAL_ITEMS);
   const [checked, setChecked] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Simulate environment check
@@ -72,7 +74,7 @@ export function Step1EnvCheck({ onNext }: Step1EnvCheckProps) {
               <p className="text-[12px] text-[var(--color-text-secondary)] mt-0.5">{item.description}</p>
             </div>
             {item.actionLabel && item.status !== "ok" && checked && (
-              <Button size="sm" variant="ghost" className="flex-shrink-0 gap-1">
+              <Button size="sm" variant="ghost" className="flex-shrink-0 gap-1" onClick={() => navigate(item.actionTarget || "/settings")}>
                 {item.actionLabel}
                 <ExternalLink size={11} />
               </Button>

@@ -54,6 +54,9 @@ interface PipelineState {
   seoData: SeoData | null;
   hotspots: HotspotData[];
   collectedMaterials: MaterialResult[];
+  compositeScore: number | null;
+  writingPersona: string;
+  enhanceStrategy: string;
   setStepStatus: (id: number, status: StepStatus, data?: unknown, error?: string) => void;
   setCurrentStep: (id: number) => void;
   setMode: (mode: PipelineMode) => void;
@@ -65,6 +68,9 @@ interface PipelineState {
   setSeoData: (data: SeoData) => void;
   setHotspots: (hotspots: HotspotData[]) => void;
   setCollectedMaterials: (materials: MaterialResult[]) => void;
+  setCompositeScore: (score: number | null) => void;
+  setWritingPersona: (persona: string) => void;
+  setEnhanceStrategy: (strategy: string) => void;
   reset: () => void;
 }
 
@@ -86,6 +92,9 @@ export const usePipelineStore = create<PipelineState>((set) => ({
   seoData: null,
   hotspots: [],
   collectedMaterials: [],
+  compositeScore: null,
+  writingPersona: "midnight-friend",
+  enhanceStrategy: "",
 
   setStepStatus: (id, status, data, error) =>
     set((state) => ({
@@ -104,6 +113,9 @@ export const usePipelineStore = create<PipelineState>((set) => ({
   setSeoData: (seoData) => set({ seoData }),
   setHotspots: (hotspots) => set({ hotspots }),
   setCollectedMaterials: (materials) => set({ collectedMaterials: materials }),
+  setCompositeScore: (compositeScore) => set({ compositeScore }),
+  setWritingPersona: (writingPersona) => set({ writingPersona }),
+  setEnhanceStrategy: (enhanceStrategy) => set({ enhanceStrategy }),
 
   reset: () =>
     set({
@@ -117,5 +129,8 @@ export const usePipelineStore = create<PipelineState>((set) => ({
       seoData: null,
       hotspots: [],
       collectedMaterials: [],
+      compositeScore: null,
+      writingPersona: "midnight-friend",
+      enhanceStrategy: "",
     }),
 }));

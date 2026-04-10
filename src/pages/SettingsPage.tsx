@@ -62,6 +62,13 @@ export function SettingsPage() {
   const [adverbMaxPer100, setAdverbMaxPer100] = useState(3);
   const [styleDrift, setStyleDrift] = useState(0.6);
   const [brokenSentenceRate, setBrokenSentenceRate] = useState(0.04);
+  const [writingPersona, setWritingPersona] = useState("midnight-friend");
+  // 5 missing writing params
+  const [selfCorrectionRate, setSelfCorrectionRate] = useState(0.02);
+  const [unexpectedWordRate, setUnexpectedWordRate] = useState(0.02);
+  const [fillerStyle, setFillerStyle] = useState("mixed");
+  const [tangentFrequency, setTangentFrequency] = useState("every_800_chars");
+  const [structureLinearity, setStructureLinearity] = useState(0.3);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState<"idle" | "loading" | "ok" | "fail">("idle");
@@ -106,6 +113,12 @@ export function SettingsPage() {
         if (cfg.style_drift) setStyleDrift(parseFloat(cfg.style_drift));
         if (cfg.broken_sentence_rate) setBrokenSentenceRate(parseFloat(cfg.broken_sentence_rate));
         if (cfg.skill_path) setSkillPath(cfg.skill_path);
+        if (cfg.writing_persona) setWritingPersona(cfg.writing_persona);
+        if (cfg.self_correction_rate) setSelfCorrectionRate(parseFloat(cfg.self_correction_rate));
+        if (cfg.unexpected_word_rate) setUnexpectedWordRate(parseFloat(cfg.unexpected_word_rate));
+        if (cfg.filler_style) setFillerStyle(cfg.filler_style);
+        if (cfg.tangent_frequency) setTangentFrequency(cfg.tangent_frequency);
+        if (cfg.structure_linearity) setStructureLinearity(parseFloat(cfg.structure_linearity));
       })
       .catch((e) => setSaveError("加载配置失败：" + e));
   }, [setConfig]);
@@ -146,6 +159,12 @@ export function SettingsPage() {
         style_drift: styleDrift.toString(),
         broken_sentence_rate: brokenSentenceRate.toString(),
         skill_path: skillPath,
+        writing_persona: writingPersona,
+        self_correction_rate: selfCorrectionRate.toString(),
+        unexpected_word_rate: unexpectedWordRate.toString(),
+        filler_style: fillerStyle,
+        tangent_frequency: tangentFrequency,
+        structure_linearity: structureLinearity.toString(),
       });
       updateKey("ai_provider", aiProvider);
       updateKey("api_key", apiKey);
@@ -175,6 +194,12 @@ export function SettingsPage() {
       updateKey("style_drift", styleDrift.toString());
       updateKey("broken_sentence_rate", brokenSentenceRate.toString());
       updateKey("skill_path", skillPath);
+      updateKey("writing_persona", writingPersona);
+      updateKey("self_correction_rate", selfCorrectionRate.toString());
+      updateKey("unexpected_word_rate", unexpectedWordRate.toString());
+      updateKey("filler_style", fillerStyle);
+      updateKey("tangent_frequency", tangentFrequency);
+      updateKey("structure_linearity", structureLinearity.toString());
 
       // Run migration if user checked the box and path changed
       if (migrateArticles && loadedSavePath.current && loadedSavePath.current !== savePath) {
@@ -470,6 +495,44 @@ export function SettingsPage() {
             </Section>
           </Card>
 
+          {/* Writing Persona */}
+          <Card>
+            <Section title="写作人格">
+              <p className="text-[11px] text-[var(--color-text-tertiary)] leading-relaxed">
+                决定文章的语气、数据呈现方式、段落节奏和结尾风格。
+              </p>
+              <div className="flex flex-col gap-2">
+                {([
+                  { id: "midnight-friend",     label: "深夜好友",   desc: "每段都有我，口语化强，适合情感共鸣类文章" },
+                  { id: "industry-observer",   label: "行业观察者", desc: "适度观点，冷静分析，适合干货型文章" },
+                  { id: "sharp-journalist",    label: "锐评记者",   desc: "简短有力，一针见血，适合争议性话题" },
+                  { id: "warm-editor",         label: "温暖编辑",   desc: "分享感强，节奏舒缓，适合成长类文章" },
+                  { id: "cold-analyst",        label: "冷静研究员", desc: "框架严谨，数据为先，适合深度分析" },
+                ] as const).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setWritingPersona(p.id)}
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-[var(--radius-sm)] text-left border transition-all duration-150",
+                      writingPersona === p.id
+                        ? "border-[var(--color-apple-blue)] bg-blue-50"
+                        : "border-transparent bg-[var(--color-light-bg)] hover:border-gray-200"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 transition-colors",
+                      writingPersona === p.id ? "border-[var(--color-apple-blue)] bg-[var(--color-apple-blue)]" : "border-gray-300"
+                    )} />
+                    <div>
+                      <p className="text-[13px] font-medium text-[var(--color-near-black)]">{p.label}</p>
+                      <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">{p.desc}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          </Card>
+
           {/* Humanizer */}
           <Card>
             <Section title="去AI化强度">
@@ -622,6 +685,77 @@ export function SettingsPage() {
                     className="w-full accent-[var(--color-apple-blue)]"
                   />
                   <p className="text-[11px] text-[var(--color-text-tertiary)]">不完整句/自我纠正的出现频率</p>
+                </div>
+
+                {/* self_correction_rate */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[13px] font-medium text-[var(--color-near-black)]">自我纠正频率</p>
+                    <span className="text-[12px] text-[var(--color-apple-blue)] font-mono">{(selfCorrectionRate * 100).toFixed(0)}%</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="0.1" step="0.01"
+                    value={selfCorrectionRate}
+                    onChange={(e) => setSelfCorrectionRate(parseFloat(e.target.value))}
+                    className="w-full accent-[var(--color-apple-blue)]"
+                  />
+                  <p className="text-[11px] text-[var(--color-text-tertiary)]">"但我刚才说的可能……"/"等等"类自我打断</p>
+                </div>
+
+                {/* unexpected_word_rate */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[13px] font-medium text-[var(--color-near-black)]">意外用词频率</p>
+                    <span className="text-[12px] text-[var(--color-apple-blue)] font-mono">{(unexpectedWordRate * 100).toFixed(0)}%</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="0.1" step="0.01"
+                    value={unexpectedWordRate}
+                    onChange={(e) => setUnexpectedWordRate(parseFloat(e.target.value))}
+                    className="w-full accent-[var(--color-apple-blue)]"
+                  />
+                  <p className="text-[11px] text-[var(--color-text-tertiary)]">偶尔使用非常规但说得通的表达</p>
+                </div>
+
+                {/* filler_style */}
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[13px] font-medium text-[var(--color-near-black)]">填充词风格</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {[["mixed","混搭"],["cold","偏书面"],["warm","偏口语"],["hot","偏网络"]].map(([v,label]) => (
+                      <button key={v} onClick={() => setFillerStyle(v)}
+                        className={cn("px-3 py-1.5 text-[12px] rounded border", fillerStyle===v ? "border-[var(--color-apple-blue)] bg-blue-50 text-[var(--color-apple-blue)]" : "border-gray-200 text-[var(--color-text-secondary)]")}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* tangent_frequency */}
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[13px] font-medium text-[var(--color-near-black)]">跑题频率</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {[["every_400_chars","频繁"],["every_800_chars","适中（推荐）"],["every_1200_chars","较少"],["none","不跑题"]].map(([v,label]) => (
+                      <button key={v} onClick={() => setTangentFrequency(v)}
+                        className={cn("px-3 py-1.5 text-[12px] rounded border", tangentFrequency===v ? "border-[var(--color-apple-blue)] bg-blue-50 text-[var(--color-apple-blue)]" : "border-gray-200 text-[var(--color-text-secondary)]")}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* structure_linearity */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[13px] font-medium text-[var(--color-near-black)]">结构线性度</p>
+                    <span className="text-[12px] text-[var(--color-apple-blue)] font-mono">{structureLinearity.toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="1" step="0.1"
+                    value={structureLinearity}
+                    onChange={(e) => setStructureLinearity(parseFloat(e.target.value))}
+                    className="w-full accent-[var(--color-apple-blue)]"
+                  />
+                  <p className="text-[11px] text-[var(--color-text-tertiary)]">越低允许越多倒叙/插叙，越高越线性流畅</p>
                 </div>
               </div>
             </Section>

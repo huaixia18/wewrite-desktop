@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { usePipelineStore } from "../store/pipeline";
 import { StepProgress } from "../components/StepProgress";
 import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
 import { Step1EnvCheck } from "../components/steps/Step1EnvCheck";
 import { Step2Topics } from "../components/steps/Step2Topics";
 import { Step3Framework } from "../components/steps/Step3Framework";
@@ -22,6 +23,11 @@ const MODE_LABELS: Record<string, string> = {
   stepwise: "逐步",
 };
 
+// Steps that require explicit confirmation in interactive mode
+const INTERACTIVE_CONFIRM_STEPS = new Set([2, 3, 7]);
+// All steps require confirmation in stepwise mode
+const STEPWISE_CONFIRM_STEPS = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+
 export function PipelinePage() {
   const {
     steps, currentStep, mode,
@@ -30,13 +36,41 @@ export function PipelinePage() {
     selectedFramework,
   } = usePipelineStore();
 
-  const goNext = useCallback(() => {
+  // Confirmation state for stepwise/interactive modes
+  const [pendingConfirm, setPendingConfirm] = useState<number | null>(null);
+
+  const needsConfirm = (step: number) => {
+    if (mode === "stepwise") return STEPWISE_CONFIRM_STEPS.has(step);
+    if (mode === "interactive") return INTERACTIVE_CONFIRM_STEPS.has(step);
+    return false;
+  };
+
+  const doAdvance = useCallback((toStep: number) => {
     setStepStatus(currentStep, "done");
-    if (currentStep < 9) {
-      setCurrentStep(currentStep + 1);
-      setStepStatus(currentStep + 1, "running");
-    }
+    setCurrentStep(toStep);
+    setStepStatus(toStep, "running");
+    setPendingConfirm(null);
   }, [currentStep, setCurrentStep, setStepStatus]);
+
+  const goNext = useCallback((targetStep?: number) => {
+    const next = targetStep ?? currentStep + 1;
+    if (next > 9) return;
+    if (needsConfirm(next)) {
+      setPendingConfirm(next); // pause and wait for user to confirm
+    } else {
+      doAdvance(next);
+    }
+  }, [currentStep, needsConfirm, doAdvance]);
+
+  const confirmAdvance = useCallback(() => {
+    if (pendingConfirm !== null) {
+      doAdvance(pendingConfirm);
+    }
+  }, [pendingConfirm, doAdvance]);
+
+  const cancelAdvance = useCallback(() => {
+    setPendingConfirm(null);
+  }, []);
 
   const goBack = useCallback(() => {
     if (currentStep > 1) {
@@ -64,7 +98,7 @@ export function PipelinePage() {
           {(["auto", "interactive", "stepwise"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => { setMode(m); setPendingConfirm(null); }}
               className={`px-3 py-1.5 text-[12px] rounded-[var(--radius-micro)] transition-all duration-150 ${
                 mode === m
                   ? "bg-white text-[var(--color-near-black)] shadow-[var(--shadow-card)] font-medium"
@@ -90,6 +124,21 @@ export function PipelinePage() {
           }}
         />
       </div>
+
+      {/* Confirmation overlay for stepwise/interactive mode */}
+      {pendingConfirm !== null && (
+        <div className="px-6 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+          <span className="text-[13px] text-blue-700">
+            {mode === "stepwise"
+              ? `第 ${pendingConfirm} 步「${STEP_TITLES[pendingConfirm - 1]}」已完成，是否继续？`
+              : `确认进入「${STEP_TITLES[pendingConfirm - 1]}」？`}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={cancelAdvance}>返回修改</Button>
+            <Button size="sm" variant="primary" onClick={confirmAdvance}>确认继续</Button>
+          </div>
+        </div>
+      )}
 
       {/* Step content */}
       <div className="flex-1 overflow-auto p-6">

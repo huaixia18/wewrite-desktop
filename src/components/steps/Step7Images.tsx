@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Loader2, ImageIcon, Check } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -10,6 +10,7 @@ import { cn } from "../../lib/utils";
 interface CoverVariant {
   id: string;
   label: string;
+  description: string;
   strategy: "intuition" | "atmosphere" | "infographic";
   prompt: string;
   imageUrl: string | null;
@@ -26,36 +27,56 @@ interface InlineImage {
   confirmed: boolean;
 }
 
+interface VisualPrompts {
+  cover_a: { name: string; description: string; english_prompt_template: string };
+  cover_b: { name: string; description: string; english_prompt_template: string };
+  cover_c: { name: string; description: string; english_prompt_template: string };
+  inline_template: string;
+  image_types: string[];
+  rules: { aspect_ratio: string; no_text: boolean; min_entities_per_prompt: number };
+}
+
 interface Step7ImagesProps {
   onNext: () => void;
   onBack: () => void;
 }
 
-function buildCoverVariants(topic: string): CoverVariant[] {
+function buildCoverVariants(topic: string, prompts?: VisualPrompts): CoverVariant[] {
+  // Fallback templates if visual-prompts.md not available
+  const templateA = prompts?.cover_a?.english_prompt_template
+    || `A bold visual metaphor for "${topic}", high impact composition, dramatic contrast, first-glance hook, flat modern illustration, 16:9 aspect ratio, clean space for title text overlay at bottom, no text or letters in image`;
+  const templateB = prompts?.cover_b?.english_prompt_template
+    || `An atmospheric scene illustration for "${topic}", emotional mood, detailed texture, inviting composition, 16:9 aspect ratio, soft lighting, space for title text overlay, no text in image`;
+  const templateC = prompts?.cover_c?.english_prompt_template
+    || `Clean infographic illustration about "${topic}", professional data visualization style, minimalist design, 16:9 aspect ratio, clear visual hierarchy, space for title text overlay at top, no text in image`;
+
   return [
     {
       id: "cover-a",
-      label: "直觉冲击型",
+      label: prompts?.cover_a?.name || "直觉冲击型",
+      description: prompts?.cover_a?.description || "用视觉隐喻直接表达文章核心观点，适合热点类、观点类",
       strategy: "intuition",
-      prompt: `A high-impact visual metaphor for the topic of "${topic}", bold contrast, first-glance hook, modern flat illustration, 16:9 aspect ratio, strong composition, clean space for title text overlay at bottom, no text or letters in image`,
+      prompt: templateA,
       imageUrl: null,
       error: null,
       confirmed: false,
     },
     {
       id: "cover-b",
-      label: "氛围渲染型",
+      label: prompts?.cover_b?.name || "氛围渲染型",
+      description: prompts?.cover_b?.description || "营造情绪或场景氛围，适合故事类、情绪类",
       strategy: "atmosphere",
-      prompt: `An atmospheric scene illustration for "${topic}", emotional mood, detailed texture, inviting composition, 16:9 aspect ratio, soft lighting, space for title text overlay, no text in image`,
+      prompt: templateB,
       imageUrl: null,
       error: null,
       confirmed: false,
     },
     {
       id: "cover-c",
-      label: "信息图表型",
+      label: prompts?.cover_c?.name || "信息图表型",
+      description: prompts?.cover_c?.description || "用简洁的图形/图标传递信息，适合干货类、清单类",
       strategy: "infographic",
-      prompt: `Clean infographic illustration about "${topic}", professional data visualization style, minimalist design, 16:9 aspect ratio, clear visual hierarchy, space for title text overlay at top, no text in image`,
+      prompt: templateC,
       imageUrl: null,
       error: null,
       confirmed: false,
@@ -69,6 +90,8 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
 
   const topic = selectedTopic?.title || "文章配图";
 
+  const [visualPrompts, setVisualPrompts] = useState<VisualPrompts | null>(null);
+  const [promptsLoading, setPromptsLoading] = useState(false);
   const [coverVariants, setCoverVariants] = useState<CoverVariant[]>(() => buildCoverVariants(topic));
   const [selectedCover, setSelectedCover] = useState<string | null>(null);
   const [inlineImages, setInlineImages] = useState<InlineImage[]>([
@@ -78,6 +101,21 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
   const [generatingCovers, setGeneratingCovers] = useState(false);
   const [generatingInline, setGeneratingInline] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<"select-cover" | "inline">("select-cover");
+
+  // Load visual-prompts.md from skill_path on mount
+  useEffect(() => {
+    if (!config.skill_path) return;
+    setPromptsLoading(true);
+    api.readVisualPrompts(config.skill_path)
+      .then((result) => {
+        if (result.success && result.data) {
+          setVisualPrompts(result.data as VisualPrompts);
+          setCoverVariants(buildCoverVariants(topic, result.data as VisualPrompts));
+        }
+      })
+      .catch(() => { /* silent - fallback to hardcoded prompts */ })
+      .finally(() => setPromptsLoading(false));
+  }, [config.skill_path, topic]);
 
   // Visual anchor (extracted from confirmed cover)
   const visualAnchor = useMemo(() => {
@@ -94,7 +132,9 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
     const updated = await Promise.all(
       coverVariants.map(async (v) => {
         try {
-          const result = await api.generateImage(v.prompt, {
+          // Substitute topic into the template
+          const prompt = v.prompt.replace(/\{topic\}/g, topic);
+          const result = await api.generateImage(prompt, {
             model: config.img_model || undefined,
             aspectRatio: config.img_aspect_ratio || undefined,
             apiKey: config.img_api_key || undefined,
@@ -115,8 +155,11 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
     if (!img) return;
     setGeneratingInline((prev) => new Set(prev).add(id));
     try {
+      // Use inline_template from visual-prompts.md if available
+      const inlineBase = visualPrompts?.inline_template
+        || "modern minimalist illustration, 16:9 aspect ratio, no text in image";
       const result = await api.generateImage(
-        `${img.paragraphNote} for article "${topic}", ${visualAnchor ? `style: ${visualAnchor.style}, palette: ${visualAnchor.palette}` : "modern minimalist illustration"}, 16:9 aspect ratio, no text in image`,
+        `${img.paragraphNote} for article "${topic}", ${visualAnchor ? `${visualAnchor.style}, palette: ${visualAnchor.palette}` : inlineBase}`,
         {
           model: config.img_model || undefined,
           aspectRatio: config.img_aspect_ratio || undefined,
@@ -160,7 +203,7 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
           <h2 className="text-[15px] font-semibold text-[var(--color-near-black)] mb-1">配图</h2>
           <p className="text-[13px] text-[var(--color-text-secondary)]">
             {phase === "select-cover"
-              ? "生成 3 组封面创意，选择满意的一张作为封面。"
+              ? "基于文章内容生成封面，选择满意的一张。"
               : "为内文生成配图，保持视觉风格一致。"}
           </p>
         </div>
@@ -186,11 +229,12 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
               disabled={generatingCovers || !config.img_api_key}
               className="gap-1.5"
             >
+              {promptsLoading && <Loader2 size={11} className="animate-spin" />}
               {generatingCovers && <Loader2 size={11} className="animate-spin" />}
-              {generatingCovers ? "生成中…" : "生成 3 组封面"}
+              {generatingCovers ? "生成中…" : "生成封面"}
             </Button>
             <span className="text-[11px] text-[var(--color-text-tertiary)]">
-              直觉冲击 / 氛围渲染 / 信息图表
+              {visualPrompts ? "使用 visual-prompts.md 模板" : "内置模板"}
             </span>
           </div>
 
@@ -201,6 +245,9 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
                   <Badge variant={v.strategy === "intuition" ? "blue" : v.strategy === "atmosphere" ? "green" : "gray"}>
                     {v.label}
                   </Badge>
+                  {v.description && (
+                    <span className="text-[10px] text-[var(--color-text-tertiary)] truncate">{v.description}</span>
+                  )}
                   {v.confirmed && <Badge variant="green"><Check size={9} /> 已确认</Badge>}
                 </div>
                 <div

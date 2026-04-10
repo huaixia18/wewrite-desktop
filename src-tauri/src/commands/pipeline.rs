@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tauri::Emitter;
 
 use crate::db;
 
@@ -368,6 +369,159 @@ fn exemplar_seeds_text() -> &'static str {
 "#
 }
 
+// Map framework type to exemplar category (from spec)
+fn exemplar_category(framework: &str) -> &'static str {
+    match framework {
+        "痛点型" => "tech-opinion",
+        "故事型" | "复盘型" => "story-emotional",
+        "清单型" | "对比型" => "list-practical",
+        "热点解读型" | "纯观点型" | "热点解读" => "hot-take",
+        _ => "general",
+    }
+}
+
+/// Load exemplar files from skill_path/references/exemplars/ and return
+/// formatted text. Falls back to exemplar_seeds_text() if no matching files.
+fn exemplar_text(skill_path: Option<&str>, framework: &str) -> String {
+    let skill_path = match skill_path {
+        Some(p) if !p.is_empty() => p,
+        _ => return exemplar_seeds_text().to_string(),
+    };
+
+    let index_path = std::path::Path::new(skill_path)
+        .join("references/exemplars/index.yaml");
+
+    if !index_path.exists() {
+        return exemplar_seeds_text().to_string();
+    }
+
+    let index_content = match std::fs::read_to_string(&index_path) {
+        Ok(c) => c,
+        Err(_) => return exemplar_seeds_text().to_string(),
+    };
+
+    let index: serde_yaml::Value = match serde_yaml::from_str(&index_content) {
+        Ok(v) => v,
+        Err(_) => return exemplar_seeds_text().to_string(),
+    };
+
+    let target_category = exemplar_category(framework);
+
+    // Parse entries: each item is a mapping with `title`, `category`, `filePath` (or `file_path`)
+    let entries: Vec<(String, String)> = index
+        .as_sequence()
+        .and_then(|seq| Some(seq.iter()))
+        .map(|iter| {
+            iter.filter_map(|item| {
+                let mapping = match item.as_mapping() {
+                    Some(m) => m,
+                    None => return None,
+                };
+                let cat_key = serde_yaml::Value::String("category".into());
+                let cat = match mapping.get(&cat_key) {
+                    Some(v) => v.as_str()?,
+                    None => return None,
+                };
+                if cat != target_category && target_category != "general" {
+                    return None;
+                }
+                let fp_key1 = serde_yaml::Value::String("filePath".into());
+                let fp_key2 = serde_yaml::Value::String("file_path".into());
+                let path = mapping
+                    .get(&fp_key1)
+                    .or_else(|| mapping.get(&fp_key2))
+                    .and_then(|v| v.as_str())?;
+                let title_key = serde_yaml::Value::String("title".into());
+                let title = mapping
+                    .get(&title_key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                Some((title.to_string(), path.to_string()))
+            }).collect()
+        })
+        .unwrap_or_default();
+
+    if entries.is_empty() {
+        return exemplar_seeds_text().to_string();
+    }
+
+    let exemplars_dir = index_path.parent().unwrap_or(std::path::Path::new(skill_path));
+    let mut result = String::new();
+
+    for (title, rel_path) in entries.into_iter().take(3) {
+        let full_path = exemplars_dir.join(&rel_path);
+        if let Ok(content) = std::fs::read_to_string(&full_path) {
+            // Take first 400 chars as style sample
+            let sample = content.chars().take(400).collect::<String>();
+            result.push_str(&format!("\n【风格样本: {}】\n{}\n", title, sample));
+        }
+    }
+
+    if result.is_empty() {
+        exemplar_seeds_text().to_string()
+    } else {
+        result
+    }
+}
+
+/// Load playbook.md from skill_path and return high-confidence rules (≥ 5).
+/// Returns empty string if file doesn't exist or can't be parsed.
+fn playbook_text(skill_path: Option<&str>) -> String {
+    let skill_path = match skill_path {
+        Some(p) if !p.is_empty() => p,
+        _ => return String::new(),
+    };
+
+    let path = std::path::Path::new(skill_path).join("playbook.md");
+    if !path.exists() {
+        return String::new();
+    }
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+
+    // Parse rules: look for "confidence: N" or "confidence:N" in each rule block
+    // Rules are separated by blank lines or section headers
+    let mut result = String::new();
+    let mut rule_count = 0;
+
+    for block in content.split("\n\n") {
+        let trimmed = block.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Check confidence level
+        let conf = trimmed.lines()
+            .find(|l| l.to_lowercase().contains("confidence"))
+            .and_then(|l| {
+                l.split(':')
+                    .nth(1)
+                    .and_then(|v| v.trim().parse::<i32>().ok())
+            })
+            .unwrap_or(0);
+
+        if conf >= 5 {
+            rule_count += 1;
+            result.push_str(trimmed);
+            result.push_str("\n\n");
+        }
+    }
+
+    if result.is_empty() {
+        return String::new();
+    }
+
+    format!(
+        "## 个性化写作规则（来自你的写作习惯，高优先级）\n\
+         以下规则来自你本人的写作风格，请严格执行（confidence ≥ 5）：\n\
+         {}\n\
+         ---",
+        result
+    )
+}
+
 // ─── Framework constraints ───────────────────────────────────────────────────
 fn framework_constraints(framework: &str) -> &'static str {
     match framework {
@@ -467,7 +621,7 @@ fn self_check_prompt(article: &str) -> String {
 
 // ─── Pipeline entry ─────────────────────────────────────────────────────────
 #[tauri::command]
-pub async fn run_pipeline_step(step: u8, params: Value) -> Result<StepResult, String> {
+pub async fn run_pipeline_step(step: u8, params: Value, app: tauri::AppHandle) -> Result<StepResult, String> {
     let ai_key = get_config("api_key");
     let ai_base = get_config("base_url");
     let ai_model = get_config("model");
@@ -485,7 +639,7 @@ pub async fn run_pipeline_step(step: u8, params: Value) -> Result<StepResult, St
             ]
         }),
         2 => generate_topics(&key, base_opt, model_opt).await?,
-        4 => write_article(&key, base_opt, model_opt, &params).await?,
+        4 => write_article_internal(&key, base_opt, model_opt, &params, app.clone()).await?,
         _ => serde_json::json!({ "status": "ready" }),
     };
 
@@ -531,48 +685,150 @@ async fn generate_topics(
     Ok(serde_json::json!({ "topics": topics }))
 }
 
-// ─── Step 4: 写作 ───────────────────────────────────────────────────────────
-async fn write_article(
+fn dimension_randomization() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0) as usize;
+
+    let pools: Vec<[(&str, &str); 4]> = vec![
+        [
+            ("叙事视角", "第一人称亲历：'我当时以为…'"),
+            ("叙事视角", "旁观者分析：'这事有意思…'"),
+            ("叙事视角", "对话体：'你说…''我说…'"),
+            ("叙事视角", "自问自答：自设疑问并作答"),
+        ],
+        [
+            ("时间线", "正序：从远到近娓娓道来"),
+            ("时间线", "倒叙：先给结论/结果再说来龙去脉"),
+            ("时间线", "插叙：主线穿插支线回忆"),
+            ("时间线", "时间跳跃：过去/现在/未来快速切换"),
+        ],
+        [
+            ("类比域", "体育：用比赛/训练/战术做类比"),
+            ("类比域", "做饭：从食材/火候/调味切入"),
+            ("类比域", "恋爱：从吸引/相处/分手切入"),
+            ("类比域", "游戏：用打法/装备/排位切入"),
+        ],
+        [
+            ("情绪基调", "克制冷静：数据说话，情感内敛"),
+            ("情绪基调", "热血激动：感叹号+排比+短句密集"),
+            ("情绪基调", "讽刺吐槽：反讽语气，揭露荒诞"),
+            ("情绪基调", "温暖治愈：细节画面感强，有共鸣"),
+        ],
+        [
+            ("节奏", "短句密集：快节奏推进信息"),
+            ("节奏", "长叙述慢推：沉浸式慢叙述"),
+            ("节奏", "长短交替：冲击-喘息-再冲击"),
+            ("节奏", "慢开头快收尾：前面铺垫，最后发力"),
+        ],
+    ];
+
+    let mut rng = seed;
+    let mut result = vec![];
+    let activate_count = 2 + if (rng % 3) == 0 { 1 } else { 0 };
+    rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+
+    for pool in pools {
+        if result.len() >= activate_count {
+            break;
+        }
+        let idx = rng % pool.len();
+        result.push(pool[idx]);
+        rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+    }
+
+    let lines: Vec<String> = result
+        .iter()
+        .map(|(dim, opt)| format!("{}：{}", dim, opt))
+        .collect();
+
+    format!("## 随机维度（本次写作激活）\n{}\n", lines.join("\n"))
+}
+
+// ─── Step 4: 写作 SSE ────────────────────────────────────────────────────────
+#[derive(Clone, Serialize)]
+struct WritingPhaseEvent {
+    phase: String,
+    article: Option<String>,
+    word_count: Option<usize>,
+    h2_count: Option<usize>,
+    persona: Option<String>,
+    framework: Option<String>,
+    message: String,
+}
+
+async fn write_article_internal(
     api_key: &str,
     base_url: Option<&str>,
     model: Option<&str>,
     params: &Value,
+    app: tauri::AppHandle,
 ) -> Result<Value, String> {
     let title = params["title"].as_str().ok_or("缺少选题标题")?;
     let framework = params["framework"].as_str().unwrap_or("热点解读");
+    let skill_path = get_config("skill_path");
 
     let materials_text: String = params["materials"]
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| {
-                    let title = v.get("title")?.as_str()?;
-                    let snippet = v.get("snippet").and_then(|s| s.as_str()).unwrap_or("");
-                    let url = v.get("url").and_then(|u| u.as_str()).unwrap_or("");
-                    Some(format!(
-                        "- {}\n  {}\n  来源: {}",
-                        title,
-                        snippet.chars().take(200).collect::<String>(),
-                        url.chars().take(100).collect::<String>()
-                    ))
+                .map(|m| {
+                    let t = m.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                    let s = m.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
+                    let u = m.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                    format!("- {}: {} ({})", t, s, u)
                 })
                 .collect::<Vec<_>>()
-                .join("\n\n")
+                .join("\n")
         })
         .unwrap_or_default();
 
-    let account_name = get_config("account_name").unwrap_or_else(|| "公众号".to_string());
+    let enhance_strategy = params["enhance_strategy"]
+        .as_str()
+        .unwrap_or("angle_discovery");
+
+    let enhance_guidance = match enhance_strategy {
+        "density_boost" => "本次写作核心策略：**密度强化**。在每个H2段落中植入尽可能多的具体信息：数字、步骤、参数、工具名、案例细节。避免空泛表述，每句话都要有信息增量。",
+        "detail_anchoring" => "本次写作核心策略：**细节锚定**。用具体的时间锚点、数字锚点、对话片段、感官细节来支撑内容。让读者有身临其境的画面感，而不是抽象的概念描述。",
+        "real_feel" => "本次写作核心策略：**真实体感**。引用真实用户的评价、踩坑经历、对比感受。让读者感受到真实使用场景中的体验差异，而非理论分析。",
+        _ => "本次写作核心策略：**角度发现**。找到与众不同的切入角度，避免泛泛而谈。提出一个反直觉或容易被忽略的视角，让读者感到'原来还可以这样想'。",
+    };
+
+    let dimension_text = dimension_randomization();
+
+    let persona = "midnight-friend";
+    let style = "口语化、有情绪、有人味";
+
     let industry = get_config("industry").unwrap_or_else(|| "AI/互联网".to_string());
-    let tone = get_config("tone").unwrap_or_else(|| "轻松幽默".to_string());
     let content_dirs = get_config("content_dirs").unwrap_or_default();
-    let persona = get_config("writing_persona").unwrap_or_else(|| "midnight-friend".to_string());
-    let blacklist = get_config("blacklist").unwrap_or_default();
+    let tone = get_config("tone").unwrap_or_else(|| "轻松幽默".to_string());
+    let blacklist = get_config("forbidden_words")
+        .map(|s| s.split(',').map(str::trim).filter(|s| !s.is_empty()).collect::<Vec<_>>())
+        .unwrap_or_default();
 
-    let wcfg = WritingConfig::load();
+    let writing_guide_text = include_str!("../../references/writing-guide.md");
+    let wcfg = WritingConfig::default();
 
+    let account_name = get_config("account_name").unwrap_or_else(|| "该领域".to_string());
+
+    let _ = app.emit(
+        "writing-progress",
+        WritingPhaseEvent {
+            phase: "开始".to_string(),
+            article: None,
+            word_count: None,
+            h2_count: None,
+            persona: None,
+            framework: None,
+            message: "正在生成初稿…".to_string(),
+        },
+    );
+
+    // ── Phase 1: Main article ──────────────────────────────────────────────
     let system = &format!(
         r#"你是公众号"{}"的专业写作者。
-{}  // writing guide
 
 {}
 
@@ -587,6 +843,11 @@ async fn write_article(
 - 语气：{}
 
 ## 真实素材（来自网络搜索，请在文章中自然引用，不要堆砌）
+{}
+
+## 内容增强
+{}
+
 {}
 
 ## 写作约束（必须遵守）
@@ -607,22 +868,27 @@ async fn write_article(
 
 {}
 
+## 个性化写作规则
+
+{}
+
 请用{}风格写一篇关于「{}」的文章。"#,
         account_name,
-        writing_guide_text(),
+        writing_guide_text,
         persona_text(&persona),
         framework_constraints(framework),
-        exemplar_seeds_text(),
         account_name,
         industry,
         content_dirs,
         tone,
+        materials_text,
+        enhance_guidance,
+        dimension_text,
         if blacklist.is_empty() { 2 } else { 3 },
         if wcfg.style_drift > 0.3 { "有意识地做" } else { "" },
-        materials_text,
-        exemplar_seeds_text(),
+        playbook_text(skill_path.as_deref()),
+        exemplar_text(skill_path.as_deref(), framework),
         framework,
-        title
     );
 
     let user = &format!(
@@ -656,6 +922,22 @@ async fn write_article(
         content.trim().to_string()
     };
 
+    let draft_wc = draft.chars().filter(|c| !c.is_whitespace()).count();
+    let draft_h2 = draft.matches("\n## ").count();
+
+    _ = app.emit(
+        "writing-progress",
+        WritingPhaseEvent {
+            phase: "初稿完成".to_string(),
+            article: Some(draft.clone()),
+            word_count: Some(draft_wc),
+            h2_count: Some(draft_h2),
+            persona: Some(persona.to_string()),
+            framework: Some(framework.to_string()),
+            message: format!("初稿 {} 字，{} 节，正在自检…", draft_wc, draft_h2),
+        },
+    );
+
     // ── Step 4.5: Post-writing self-check ──────────────────────────────────
     let self_check_system = r#"你是一个专业的文章编辑，擅长修复AI写作痕迹。严格执行以下检查并修复。"#;
 
@@ -678,7 +960,6 @@ async fn write_article(
         checked_article.trim().to_string()
     };
 
-    // If self-check returns almost the same content (no change), use draft
     let final_article = if final_article.len() < draft.len() * 3 / 4 {
         draft.clone()
     } else {
@@ -688,6 +969,19 @@ async fn write_article(
     let word_count = final_article.chars().filter(|c| !c.is_whitespace()).count();
     let h2_count = final_article.matches("\n## ").count();
 
+    _ = app.emit(
+        "writing-progress",
+        WritingPhaseEvent {
+            phase: "完成".to_string(),
+            article: Some(final_article.clone()),
+            word_count: Some(word_count),
+            h2_count: Some(h2_count),
+            persona: Some(persona.to_string()),
+            framework: Some(framework.to_string()),
+            message: format!("定稿 {} 字，{} 节", word_count, h2_count),
+        },
+    );
+
     Ok(serde_json::json!({
         "article": final_article,
         "word_count": word_count,
@@ -695,11 +989,16 @@ async fn write_article(
         "title": title,
         "framework": framework,
         "persona": persona,
-        "writing_config": {
-            "sentence_variance": wcfg.sentence_variance,
-            "paragraph_rhythm": wcfg.paragraph_rhythm,
-            "emotional_arc": wcfg.emotional_arc,
-            "style_drift": wcfg.style_drift,
-        }
     }))
+}
+
+#[tauri::command]
+pub async fn write_article_streaming(
+    params: Value,
+    app: tauri::AppHandle,
+) -> Result<Value, String> {
+    let api_key = get_config("api_key").ok_or("未配置 AI API Key，请先去设置页填写")?;
+    let base_url = get_config("base_url");
+    let model = get_config("model");
+    write_article_internal(&api_key, base_url.as_deref(), model.as_deref(), &params, app).await
 }

@@ -66,6 +66,7 @@ export interface GenerateImageResult {
 export interface SaveArticleResult {
   file_path: string;
   id: number;
+  composite_score?: number;
 }
 
 export const api = {
@@ -77,9 +78,26 @@ export const api = {
   openArticleFolder: (filePath: string) =>
     invoke<void>("open_article_folder", { filePath }),
   getDefaultSavePath: () => invoke<string>("get_default_save_path"),
-  saveArticle: (title: string, content: string, framework?: string) =>
+  saveArticle: (
+    title: string,
+    content: string,
+    options?: {
+      framework?: string;
+      composite_score?: number;
+      writing_persona?: string;
+      media_id?: string;
+      topic_source?: string;
+      topic_keywords?: string[];
+      enhance_strategy?: string;
+      dimensions?: string[];
+      closing_type?: string;
+      digest?: string;
+      tags?: string[];
+      word_count?: number;
+    }
+  ) =>
     invoke<SaveArticleResult>("save_article", {
-      params: { title, content, framework },
+      params: { title, content, ...options },
     }),
 
   humanize: (content: string, strictness: Strictness) =>
@@ -94,6 +112,21 @@ export const api = {
 
   runPipelineStep: (step: number, params?: unknown) =>
     invoke<StepResult>("run_pipeline_step", { step, params: params ?? {} }),
+
+  writeArticleStreaming: (params: {
+    title: string;
+    framework: string;
+    materials?: MaterialResult[];
+    enhance_strategy?: string;
+  }) =>
+    invoke<{
+      article: string;
+      word_count: number;
+      h2_count: number;
+      title: string;
+      framework: string;
+      persona: string;
+    }>("write_article_streaming", { params }),
 
   generateImage: (
     prompt: string,
@@ -152,6 +185,14 @@ export const api = {
       error?: string;
     }>("collect_materials", { skillPath, topic, framework, keywords }),
 
+  humannessScore: (skillPath: string, articlePath: string, tier3?: number) =>
+    invoke<{
+      success: boolean;
+      composite_score?: number;
+      param_scores?: Record<string, number>;
+      error?: string;
+    }>("humanness_score", { skillPath, articlePath, tier3 }),
+
   checkPythonEnv: (skillPath: string) =>
     invoke<{
       success: boolean;
@@ -161,6 +202,20 @@ export const api = {
       has_seo_script?: boolean;
       error?: string;
     }>("check_python_env", { skillPath }),
+
+  readVisualPrompts: (skillPath: string) =>
+    invoke<{
+      success: boolean;
+      data?: {
+        cover_a?: { name: string; description: string; english_prompt_template: string };
+        cover_b?: { name: string; description: string; english_prompt_template: string };
+        cover_c?: { name: string; description: string; english_prompt_template: string };
+        inline_template?: string;
+        image_types?: string[];
+        rules?: { aspect_ratio: string; no_text: boolean; min_entities_per_prompt: number };
+      };
+      error?: string;
+    }>("read_visual_prompts", { skillPath }),
 };
 
 export interface Hotspot {

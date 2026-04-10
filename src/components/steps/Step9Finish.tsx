@@ -8,9 +8,9 @@ interface Step9FinishProps {
 }
 
 export function Step9Finish({ onReset }: Step9FinishProps) {
-  const { selectedTopic, articleContent, savedFilePath } = usePipelineStore();
+  const { selectedTopic, articleContent, seoData, savedFilePath } = usePipelineStore();
 
-  const title = selectedTopic?.title || "（未知标题）";
+  const title = seoData?.selectedTitle || selectedTopic?.title || "（未知标题）";
   const framework = selectedTopic?.framework || "—";
   const wordCount = articleContent.replace(/\s/g, "").length;
 

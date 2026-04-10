@@ -179,6 +179,42 @@ pub fn collect_materials(skill_path: String, topic: String, framework: String, k
     }
 }
 
+/// Run humanness_score.py to measure article quality
+#[tauri::command]
+pub fn humanness_score(skill_path: String, article_path: String, tier3: Option<f64>) -> SearchResult {
+    let script = std::path::Path::new(&skill_path).join("scripts/humanness_score.py");
+    if !script.exists() {
+        return SearchResult {
+            success: false,
+            data: serde_json::Value::Null,
+            error: Some(format!("humanness_score.py 不存在: {}", script.display())),
+        };
+    }
+
+    let script_str = script.to_string_lossy().to_string();
+    let path_arg = article_path.clone();
+    let tier_arg = tier3.unwrap_or(0.5).to_string();
+
+    let handle = thread::spawn(move || {
+        run_python_script(&script_str, &["--json", "--tier3", &tier_arg, &path_arg], 30)
+    });
+
+    match handle.join() {
+        Ok(Ok(json_str)) => {
+            match serde_json::from_str::<serde_json::Value>(&json_str) {
+                Ok(v) => SearchResult { success: true, data: v, error: None },
+                Err(e) => SearchResult {
+                    success: false,
+                    data: serde_json::Value::Null,
+                    error: Some(format!("评分解析失败: {} | {}", e, &json_str[..json_str.len().min(200)])),
+                },
+            }
+        }
+        Ok(Err(e)) => SearchResult { success: false, data: serde_json::Value::Null, error: Some(e) },
+        Err(_) => SearchResult { success: false, data: serde_json::Value::Null, error: Some("评分脚本超时".to_string()) },
+    }
+}
+
 /// Check if Python3 and required packages are available
 #[tauri::command]
 pub fn check_python_env(skill_path: String) -> SearchResult {
@@ -225,5 +261,131 @@ pub fn check_python_env(skill_path: String) -> SearchResult {
         } else {
             None
         },
+    }
+}
+
+/// Read visual-prompts.md and return structured prompt content for Step 7 (配图).
+#[tauri::command]
+pub fn read_visual_prompts(skill_path: String) -> SearchResult {
+    let path = std::path::Path::new(&skill_path).join("references/visual-prompts.md");
+    if !path.exists() {
+        return SearchResult {
+            success: false,
+            data: serde_json::Value::Null,
+            error: Some(format!("visual-prompts.md 不存在: {}", path.display())),
+        };
+    }
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            return SearchResult {
+                success: false,
+                data: serde_json::Value::Null,
+                error: Some(format!("读取失败: {}", e)),
+            }
+        }
+    };
+
+    // Extract cover strategy prompts by finding the English prompt blocks after "AI 绘图提示词："
+    let cover_a_prompt = extract_english_prompt(&content, "创意 A");
+    let cover_b_prompt = extract_english_prompt(&content, "创意 B");
+    let cover_c_prompt = extract_english_prompt(&content, "创意 C");
+
+    // Extract inline image template guidance
+    let inline_template = extract_section(&content, "内文配图通用要求")
+        .unwrap_or_else(|| "16:9 aspect ratio, no text in image, minimalist style".to_string());
+
+    let data = serde_json::json!({
+        "cover_a": {
+            "name": "直觉冲击型",
+            "description": "用视觉隐喻直接表达文章核心观点，适合热点类、观点类",
+            "english_prompt_template": cover_a_prompt,
+        },
+        "cover_b": {
+            "name": "氛围渲染型",
+            "description": "营造情绪或场景氛围，适合故事类、情绪类",
+            "english_prompt_template": cover_b_prompt,
+        },
+        "cover_c": {
+            "name": "信息图表型",
+            "description": "用简洁的图形/图标/数据可视化传递信息，适合干货类、清单类",
+            "english_prompt_template": cover_c_prompt,
+        },
+        "inline_template": inline_template,
+        "image_types": ["infographic", "scene", "flowchart", "comparison", "framework", "timeline"],
+        "rules": {
+            "aspect_ratio": "16:9",
+            "no_text": true,
+            "min_entities_per_prompt": 2,
+        }
+    });
+
+    SearchResult { success: true, data, error: None }
+}
+
+/// Extract the English AI image prompt that follows a section header (Chinese: "AI 绘图提示词：")
+fn extract_english_prompt(content: &str, section: &str) -> String {
+    let section_idx = match content.find(section) {
+        Some(idx) => idx,
+        None => return String::new(),
+    };
+    let after_section = &content[section_idx..];
+
+    // Find "AI 绘图提示词：" after the section marker
+    let prompt_marker = "AI 绘图提示词：";
+    let prompt_idx = match after_section.find(prompt_marker) {
+        Some(idx) => idx + prompt_marker.len(),
+        None => return String::new(),
+    };
+    let after_marker = &after_section[prompt_idx..];
+
+    // Extract quoted string or next few lines until a blank line or "适配工具"
+    let lines: Vec<&str> = after_marker.lines().take(4).collect();
+    let mut prompt = String::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("适配") || trimmed.starts_with("- ") {
+            break;
+        }
+        // Remove surrounding quotes if present
+        let clean = trimmed.trim_matches('"').trim_matches('"');
+        if !clean.is_empty() {
+            if !prompt.is_empty() {
+                prompt.push_str(" ");
+            }
+            prompt.push_str(clean);
+        }
+    }
+    prompt
+}
+
+/// Extract a named section from markdown content
+fn extract_section(content: &str, section_name: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut in_section = false;
+    let mut result = Vec::new();
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed == section_name || trimmed.starts_with(&format!("## {}", section_name)) {
+            in_section = true;
+            continue;
+        }
+        if in_section {
+            // Stop at next ## heading
+            if trimmed.starts_with("## ") || trimmed.starts_with("# ") {
+                break;
+            }
+            if !trimmed.is_empty() {
+                result.push(trimmed.to_string());
+            }
+        }
+    }
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(result.join(" "))
     }
 }

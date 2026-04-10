@@ -20,12 +20,13 @@ interface Step5HumanizerProps {
 }
 
 export function Step5Humanizer({ onNext, onBack }: Step5HumanizerProps) {
-  const { articleContent, setArticleContent } = usePipelineStore();
+  const { articleContent, setArticleContent, setCompositeScore: setStoreCompositeScore } = usePipelineStore();
   const { config } = useConfigStore();
   const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
   const [hits, setHits] = useState<HitRecord[]>([]);
   const [fixedContent, setFixedContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [displayScore, setDisplayScore] = useState<number | null>(null);
 
   const handleRun = async () => {
     if (!articleContent) {
@@ -49,6 +50,24 @@ export function Step5Humanizer({ onNext, onBack }: Step5HumanizerProps) {
         setFixedContent(result.fixed);
       }
       setPhase("done");
+
+      // Run humanness_score.py if skill_path is configured
+      if (config.skill_path) {
+        try {
+          // Write fixed content to temp file via Rust
+          const tempPath = `/tmp/wewrite_score_${Date.now()}.md`;
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("write_temp_file", { path: tempPath, content: result.fixed });
+          const scoreResult = await api.humannessScore(config.skill_path, tempPath);
+          if (scoreResult.success && scoreResult.composite_score !== undefined) {
+            const score = scoreResult.composite_score;
+            setStoreCompositeScore(score);
+            setDisplayScore(score);
+          }
+        } catch {
+          // Silent fail - humanness score is supplementary
+        }
+      }
     } catch (e) {
       setError(typeof e === "string" ? e : "去AI化检测失败");
       setPhase("idle");
@@ -74,6 +93,15 @@ export function Step5Humanizer({ onNext, onBack }: Step5HumanizerProps) {
             {phase === "done"
               ? `检测到 ${hits.length} 处 AI 写作痕迹${fixedContent ? "，已自动修复" : ""}`
               : "检测并修复 AI 写作痕迹，让文章更像真人。"}
+            {displayScore !== null && (
+              <span className={`ml-2 text-[11px] px-2 py-0.5 rounded-full ${
+                displayScore < 30 ? "bg-green-50 text-green-600" :
+                displayScore < 50 ? "bg-amber-50 text-amber-600" :
+                "bg-red-50 text-red-500"
+              }`}>
+                质量评分: {displayScore}
+              </span>
+            )}
           </p>
         </div>
         {phase === "idle" && (

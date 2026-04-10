@@ -7,6 +7,7 @@ use crate::db;
 pub struct SaveArticleResult {
     pub file_path: String,
     pub id: i64,
+    pub composite_score: Option<f64>,
 }
 
 fn slugify(title: &str) -> String {
@@ -42,6 +43,33 @@ pub fn save_article(params: Value) -> Result<SaveArticleResult, String> {
         .ok_or("缺少 content")?
         .to_string();
     let framework = params["framework"].as_str().map(String::from);
+    let composite_score = params["composite_score"].as_f64();
+    let writing_persona = params["writing_persona"].as_str().map(String::from);
+    let media_id = params["media_id"].as_str().map(String::from);
+    let topic_source = params["topic_source"].as_str().unwrap_or("用户指定");
+    let topic_keywords = params["topic_keywords"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(","))
+        .unwrap_or_default();
+    let enhance_strategy = params["enhance_strategy"].as_str().unwrap_or("");
+    let dimensions = params["dimensions"]
+        .as_array()
+        .map(|arr| {
+            arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("; ")
+        })
+        .unwrap_or_default();
+    let closing_type = params["closing_type"].as_str().unwrap_or("");
+    let word_count_val = params["word_count"].as_i64().unwrap_or_else(|| content.chars().count() as i64);
+    let digest = params["digest"].as_str().unwrap_or("");
+    let tags: Vec<String> = params["tags"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(String::from).collect())
+        .unwrap_or_default();
+    let seo_metadata = if !digest.is_empty() || !tags.is_empty() {
+        serde_json::json!({ "digest": digest, "tags": tags }).to_string()
+    } else {
+        String::new()
+    };
 
     let conn = db::open().map_err(|e| e.to_string())?;
 
@@ -67,25 +95,88 @@ pub fn save_article(params: Value) -> Result<SaveArticleResult, String> {
     let file_path = dir.join(&filename);
     std::fs::write(&file_path, &content).map_err(|e| format!("写入文件失败: {}", e))?;
 
-    let word_count = content.chars().count() as i64;
     conn.execute(
-        "INSERT INTO articles (date, title, slug, framework, word_count, file_path, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))",
+        "INSERT INTO articles (date, title, slug, framework, word_count, file_path, composite_score, writing_persona, seo_metadata, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))",
         rusqlite::params![
             &date,
             &title,
             &slug,
             &framework,
-            word_count,
+            word_count_val,
             file_path.to_string_lossy().to_string(),
+            composite_score,
+            &writing_persona,
+            &seo_metadata,
         ],
     )
     .map_err(|e| format!("保存记录失败: {}", e))?;
 
     let id = conn.last_insert_rowid();
+
+    // Write history.yaml if skill_path is configured
+    if let Ok(skill_path) = get_config_str(&conn, "skill_path") {
+        if !skill_path.is_empty() {
+            let history_path = std::path::Path::new(&skill_path).join("history.yaml");
+            let kws = topic_keywords.split(',')
+                .map(|s| format!("\"{}\"", s.trim()))
+                .collect::<Vec<_>>().join(", ");
+            let tags_str = if tags.is_empty() {
+                "[]".to_string()
+            } else {
+                format!("[{}]", tags.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(", "))
+            };
+            let dims = dimensions.split("; ")
+                .map(|s| format!("    - \"{}\"", s.trim()))
+                .collect::<Vec<_>>().join("\n");
+            let history_entry = format!(
+                "- date: \"{}\"
+  title: \"{}\"
+  topic_source: \"{}\"
+  topic_keywords: [{}]
+  output_file: {}
+  framework: \"{}\"
+  enhance_strategy: \"{}\"
+  word_count: {}
+  digest: \"{}\"
+  tags: {}
+  media_id: {}
+  writing_persona: \"{}\"
+  dimensions:\n{}
+  closing_type: \"{}\"
+  composite_score: {}
+  stats: null\n",
+                date,
+                title.replace('"', "\\\""),
+                topic_source,
+                kws,
+                file_path.to_string_lossy().to_string(),
+                framework.as_deref().unwrap_or(""),
+                enhance_strategy,
+                word_count_val,
+                digest.replace('"', "\\\""),
+                tags_str,
+                media_id.map(|s| format!("\"{}\"", s)).unwrap_or_else(|| "null".to_string()),
+                writing_persona.as_deref().unwrap_or("midnight-friend"),
+                dims,
+                closing_type,
+                composite_score.map(|s| s.to_string()).unwrap_or_else(|| "null".to_string()),
+            );
+
+            let existing = std::fs::read_to_string(&history_path).unwrap_or_default();
+            let updated = if existing.trim().is_empty() {
+                history_entry
+            } else {
+                format!("{}\n{}", existing.trim_end(), history_entry)
+            };
+            let _ = std::fs::write(&history_path, updated);
+        }
+    }
+
     Ok(SaveArticleResult {
         file_path: file_path.to_string_lossy().to_string(),
         id,
+        composite_score,
     })
 }
 
@@ -195,4 +286,17 @@ pub fn get_default_save_path() -> Result<String, String> {
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
         .join("WeWrite");
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn write_temp_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, &content).map_err(|e| format!("写入失败: {}", e))
+}
+
+fn get_config_str(conn: &rusqlite::Connection, key: &str) -> Result<String, String> {
+    let mut stmt = conn
+        .prepare(&format!("SELECT value FROM config WHERE key = '{}'", key))
+        .map_err(|e| e.to_string())?;
+    stmt.query_row([], |row| row.get(0))
+        .map_err(|e| e.to_string())
 }

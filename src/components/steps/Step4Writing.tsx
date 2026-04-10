@@ -1,8 +1,19 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Loader2, FileText } from "lucide-react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Button } from "../ui/Button";
 import { api } from "../../lib/tauri";
 import { usePipelineStore } from "../../store/pipeline";
+
+interface WritingPhaseEvent {
+  phase: string;
+  article: string | null;
+  word_count: number | null;
+  h2_count: number | null;
+  persona: string | null;
+  framework: string | null;
+  message: string;
+}
 
 interface Step4WritingProps {
   onNext: () => void;
@@ -13,60 +24,101 @@ interface Step4WritingProps {
 }
 
 export function Step4Writing({ onNext, onBack, topic, framework, onArticleReady }: Step4WritingProps) {
-  const { articleContent, setArticleContent, collectedMaterials } = usePipelineStore();
-  const [phase, setPhase] = useState<"loading" | "streaming" | "done" | "error">(
-    articleContent ? "done" : "loading"
-  );
+  const { articleContent, setArticleContent, collectedMaterials, setWritingPersona, enhanceStrategy } = usePipelineStore();
+
+  type Phase = "idle" | "loading" | "streaming" | "done" | "error";
+  const [phase, setPhase] = useState<Phase>(articleContent ? "done" : "idle");
   const [article, setArticle] = useState(articleContent || "");
   const [displayedChars, setDisplayedChars] = useState(articleContent ? articleContent.length : 0);
   const [error, setError] = useState<string | null>(null);
   const [wordCount, setWordCount] = useState(0);
-  const hasFetched = useRef(false);
+  const [h2Count, setH2Count] = useState(0);
+  const [activePersona, setActivePersona] = useState("");
+  const [activeFramework, setActiveFramework] = useState("");
+  const [phaseMessage, setPhaseMessage] = useState("");
+  const hasStarted = useRef(false);
   const cancelledRef = useRef(false);
+  const unlistenRef = useRef<UnlistenFn | null>(null);
 
-  const fetchArticle = useCallback(async () => {
+  const startWriting = useCallback(async () => {
     if (articleContent) return;
+    if (hasStarted.current) return;
+    hasStarted.current = true;
     cancelledRef.current = false;
-    hasFetched.current = true;
     setPhase("loading");
     setArticle("");
     setDisplayedChars(0);
     setError(null);
+    setPhaseMessage("正在启动写作流程…");
+
+    // Listen to SSE events from Rust backend
+    unlistenRef.current = await listen<WritingPhaseEvent>("writing-progress", (event) => {
+      if (cancelledRef.current) return;
+      const ev = event.payload;
+      setPhaseMessage(ev.message);
+
+      if (ev.article) {
+        setArticle(ev.article);
+        setPhase("streaming");
+      }
+      if (ev.word_count !== null) setWordCount(ev.word_count);
+      if (ev.h2_count !== null) setH2Count(ev.h2_count);
+      if (ev.persona) setActivePersona(ev.persona);
+      if (ev.framework) setActiveFramework(ev.framework);
+
+      if (ev.phase === "完成") {
+        setPhase("done");
+        if (ev.article) {
+          setArticleContent(ev.article);
+          onArticleReady?.(ev.article);
+          setWritingPersona(ev.persona || "midnight-friend");
+        }
+      }
+    });
+
     try {
-      const result = await api.runPipelineStep(4, {
+      const result = await api.writeArticleStreaming({
         title: topic?.title || "（未选择选题，请先在第二步选择）",
         framework: framework || topic?.framework || "热点解读",
         materials: collectedMaterials.length > 0 ? collectedMaterials : undefined,
+        enhance_strategy: enhanceStrategy || "angle_discovery",
       });
       if (cancelledRef.current) return;
-      const data = result.data as { article: string; word_count: number; h2_count?: number };
-      const text = data.article || "AI 未返回内容";
-      setArticle(text);
-      setWordCount(data.word_count || 0);
-      setArticleContent(text);
-      setPhase("streaming");
-      onArticleReady?.(text);
+      // Final result — events may have already updated state, but ensure it's set
+      setArticle(result.article);
+      setWordCount(result.word_count);
+      setH2Count(result.h2_count);
+      setActivePersona(result.persona);
+      setActiveFramework(result.framework);
+      setArticleContent(result.article);
+      setWritingPersona(result.persona || "midnight-friend");
+      setPhase("done");
+      onArticleReady?.(result.article);
     } catch (e) {
       if (cancelledRef.current) return;
       setError(typeof e === "string" ? e : "写作失败，请检查 API Key 配置");
       setPhase("error");
     }
-  }, [topic, framework, articleContent, setArticleContent, onArticleReady]);
+  }, [topic, framework, articleContent, setArticleContent, onArticleReady, setWritingPersona, collectedMaterials, enhanceStrategy]);
 
   const cancelFetch = () => {
     cancelledRef.current = true;
+    unlistenRef.current?.();
     setPhase("error");
     setError("已取消");
   };
 
   useEffect(() => {
-    if (!hasFetched.current) {
-      fetchArticle();
+    if (phase === "idle") {
+      startWriting();
     }
-    return () => { cancelledRef.current = true; };
-  }, [fetchArticle]);
+    return () => {
+      cancelledRef.current = true;
+      unlistenRef.current?.();
+    };
+  }, [startWriting, phase]);
 
-  // Simulate streaming display
+  // Simulate streaming display for the article text
   useEffect(() => {
     if (phase !== "streaming") return;
     if (displayedChars >= article.length) {
@@ -85,9 +137,10 @@ export function Step4Writing({ onNext, onBack, topic, framework, onArticleReady 
         <div>
           <h2 className="text-[15px] font-semibold text-[var(--color-near-black)] mb-1">写作</h2>
           <p className="text-[13px] text-[var(--color-text-secondary)]">
-            {phase === "loading" && "AI 正在写作，可能需要 30-60 秒…"}
-            {phase === "streaming" && "AI 正在写作…"}
-            {phase === "done" && `初稿完成，共 ${wordCount || content.replace(/\s/g, "").length} 字。`}
+            {phase === "idle" && "准备启动…"}
+            {phase === "loading" && "AI 正在启动，可能需要 30-60 秒…"}
+            {phase === "streaming" && phaseMessage}
+            {phase === "done" && `完成 | ${activeFramework || framework || "热点解读"} | 人格：${activePersona || "默认"} | ${h2Count}节 | ${wordCount}字`}
             {phase === "error" && "写作出错了"}
           </p>
         </div>
@@ -115,14 +168,14 @@ export function Step4Writing({ onNext, onBack, topic, framework, onArticleReady 
       {phase === "error" ? (
         <div className="flex flex-col items-center gap-3 py-12">
           <p className="text-[13px] text-red-500">{error}</p>
-          <Button size="sm" variant="secondary" onClick={() => { hasFetched.current = false; fetchArticle(); }}>
+          <Button size="sm" variant="secondary" onClick={() => { hasStarted.current = false; setPhase("idle"); }}>
             重试
           </Button>
         </div>
       ) : phase === "loading" ? (
         <div className="flex flex-col items-center gap-3 py-16">
           <Loader2 size={28} className="animate-spin text-gray-300" />
-          <span className="text-[12px] text-[var(--color-text-tertiary)]">AI 正在构思和写作，通常需要 30-60 秒…</span>
+          <span className="text-[12px] text-[var(--color-text-tertiary)]">{phaseMessage || "AI 正在构思和写作…"}</span>
           <button onClick={cancelFetch} className="text-[12px] text-[var(--color-text-tertiary)] hover:text-red-500 underline">
             取消
           </button>
@@ -130,7 +183,7 @@ export function Step4Writing({ onNext, onBack, topic, framework, onArticleReady 
       ) : (
         <div
           className="rounded-[var(--radius-sm)] bg-[var(--color-light-bg)] p-4 text-[13px] text-[var(--color-near-black)] leading-relaxed overflow-y-auto whitespace-pre-wrap"
-          style={{ maxHeight: "420px", fontFamily: 'inherit' }}
+          style={{ maxHeight: "420px", fontFamily: "inherit" }}
         >
           {content}
           {phase === "streaming" && <span className="inline-block w-2 h-3.5 bg-[var(--color-apple-blue)] ml-0.5 align-middle animate-pulse" />}

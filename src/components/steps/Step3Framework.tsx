@@ -34,6 +34,17 @@ const FRAMEWORK_LABELS: Record<string, string> = {
   review: "复盘型",
 };
 
+// Framework → content enhancement strategy (per skill spec Step 3.2)
+const FRAMEWORK_ENHANCE: Record<string, string> = {
+  pain: "density_boost",
+  list: "density_boost",
+  story: "detail_anchoring",
+  review: "detail_anchoring",
+  hotspot: "angle_discovery",
+  opinion: "angle_discovery",
+  compare: "real_feel",
+};
+
 interface Step3FrameworkProps {
   onNext: (frameworkId: string) => void;
   onBack: () => void;
@@ -41,9 +52,20 @@ interface Step3FrameworkProps {
 
 export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
   const { config } = useConfigStore();
-  const { selectedTopic, setCollectedMaterials } = usePipelineStore();
+  const { selectedTopic, setCollectedMaterials, setEnhanceStrategy } = usePipelineStore();
 
-  const [selectedFramework, setSelectedFramework] = useState<string>("hotspot");
+  // Auto-select: use topic's recommended framework, otherwise highest-scoring
+  const defaultFramework = (() => {
+    if (selectedTopic?.framework) {
+      const matched = Object.entries(FRAMEWORK_LABELS).find(([, v]) => v === selectedTopic.framework);
+      if (matched) return matched[0];
+    }
+    // Fallback: highest recommendScore
+    return FRAMEWORKS.reduce((best, fw) =>
+      fw.recommendScore > best.recommendScore ? fw : best, FRAMEWORKS[0]).id;
+  })();
+
+  const [selectedFramework, setSelectedFramework] = useState<string>(defaultFramework);
   const [collecting, setCollecting] = useState(false);
   const [materials, setMaterials] = useState<MaterialResult[]>([]);
   const [collectError, setCollectError] = useState<string | null>(null);
@@ -82,14 +104,19 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
       setMaterials([]);
       setCollectedMaterials([]);
     }
-  }, [selectedFramework, topic, config.skill_path]);
+    // Auto-select highest scoring framework when topic changes
+    if (selectedTopic?.framework) {
+      const matched = Object.entries(FRAMEWORK_LABELS).find(([, v]) => v === selectedTopic.framework);
+      if (matched) setSelectedFramework(matched[0]);
+    }
+  }, [selectedTopic, topic, config.skill_path]);
 
   const handleConfirm = () => {
     setConfirmed(true);
   };
 
   const handleNext = () => {
-    // Materials are already stored in the pipeline store
+    setEnhanceStrategy(FRAMEWORK_ENHANCE[selectedFramework] || "angle_discovery");
     onNext(selectedFramework);
   };
 

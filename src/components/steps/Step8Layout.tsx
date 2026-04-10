@@ -26,7 +26,7 @@ function markdownToHtml(md: string): string {
 }
 
 export function Step8Layout({ onNext, onBack }: Step8LayoutProps) {
-  const { articleContent, selectedTopic, setSavedFilePath } = usePipelineStore();
+  const { articleContent, selectedTopic, seoData, compositeScore, writingPersona, enhanceStrategy, setSavedFilePath } = usePipelineStore();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -59,7 +59,17 @@ ${body}
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await api.saveArticle(selectedTopic.title, articleContent, selectedTopic.framework);
+      const title = seoData?.selectedTitle || selectedTopic.title;
+      const result = await api.saveArticle(title, articleContent, {
+        framework: selectedTopic.framework,
+        composite_score: compositeScore ?? undefined,
+        writing_persona: writingPersona,
+        enhance_strategy: enhanceStrategy,
+        digest: seoData?.digest,
+        tags: seoData?.tags,
+        topic_source: "用户指定",
+        word_count: articleContent.replace(/\s/g, "").length,
+      });
       setSavedFilePath(result.file_path);
       setSaved(true);
     } catch (e) {

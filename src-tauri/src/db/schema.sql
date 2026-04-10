@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS articles (
     topic_keywords TEXT,
     dimensions TEXT,
     writing_config TEXT,
+    seo_metadata TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

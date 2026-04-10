@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { api } from "../../lib/tauri";
+import { Loader2 } from "lucide-react";
+import { api, type KeywordResult } from "../../lib/tauri";
 import { cn } from "../../lib/utils";
 import { usePipelineStore } from "../../store/pipeline";
 import { useConfigStore } from "../../store/config";
@@ -69,7 +70,29 @@ export function Step6SEO({ onNext, onBack }: Step6SEOProps) {
     seoData?.tags?.length ? seoData.tags : extractTags(title)
   );
   const [analysis, setAnalysis] = useState<TextAnalysis | null>(null);
+  const [seoKeywords, setSeoKeywords] = useState<KeywordResult[]>([]);
+  const [seoLoading, setSeoLoading] = useState(false);
   const analysisDone = useRef(false);
+
+  // Fetch SEO keywords from Python script
+  useEffect(() => {
+    if (!config.skill_path || !selectedTopic?.keywords?.length) return;
+    setSeoLoading(true);
+    api.seoKeywords(config.skill_path, selectedTopic.keywords)
+      .then((result) => {
+        if (result.success && result.keywords) {
+          setSeoKeywords(result.keywords);
+          const newTags = result.keywords
+            .map((k) => k.keyword)
+            .filter((kw) => !tagList.includes(kw))
+            .slice(0, 8 - tagList.length);
+          if (newTags.length > 0) setTagList((prev) => [...prev, ...newTags]);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSeoLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTopic?.keywords, config.skill_path]);
 
   // Fetch text analysis when article content changes
   useEffect(() => {
@@ -215,7 +238,13 @@ export function Step6SEO({ onNext, onBack }: Step6SEOProps) {
 
       {/* Tags */}
       <div>
-        <p className="text-[12px] font-medium text-[var(--color-text-secondary)] mb-2 uppercase tracking-wider">标签</p>
+        <div className="flex items-center gap-2 mb-2">
+          <p className="text-[12px] font-medium text-[var(--color-text-secondary)] uppercase tracking-wider">标签</p>
+          {seoLoading && <Loader2 size={11} className="animate-spin text-gray-400" />}
+          {!seoLoading && seoKeywords.length > 0 && (
+            <span className="text-[11px] text-[var(--color-text-tertiary)]">SEO推荐</span>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2 mb-2">
           {tagList.map((tag) => (
             <button

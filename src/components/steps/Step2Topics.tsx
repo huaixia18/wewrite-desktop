@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, TrendingUp, Loader2 } from "lucide-react";
+import { Sparkles, TrendingUp, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { cn } from "../../lib/utils";
-import { api } from "../../lib/tauri";
+import { api, type Hotspot } from "../../lib/tauri";
+import { useConfigStore } from "../../store/config";
+import { usePipelineStore } from "../../store/pipeline";
 
 interface Topic {
   title: string;
@@ -21,12 +23,37 @@ interface Step2TopicsProps {
 }
 
 export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProps) {
+  const { config } = useConfigStore();
+  const { setHotspots, hotspots } = usePipelineStore();
+
   const [topics, setTopics] = useState<Topic[]>([]);
   const [selected, setSelected] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hotspotsLoading, setHotspotsLoading] = useState(false);
+  const [hotspotsError, setHotspotsError] = useState<string | null>(null);
+  const [showHotspots, setShowHotspots] = useState(true);
 
   const cancelledRef = { current: false };
+
+  // Fetch hotspots from Python script
+  const fetchHotspots = useCallback(async () => {
+    if (!config.skill_path) return;
+    setHotspotsLoading(true);
+    setHotspotsError(null);
+    try {
+      const result = await api.fetchHotspots(config.skill_path, 30);
+      if (result.success && result.hotspots) {
+        setHotspots(result.hotspots as Hotspot[]);
+      } else {
+        setHotspotsError(result.error || "热搜获取失败");
+      }
+    } catch (e) {
+      setHotspotsError(String(e));
+    } finally {
+      setHotspotsLoading(false);
+    }
+  }, [config.skill_path, setHotspots]);
 
   const fetchTopics = useCallback(async () => {
     cancelledRef.current = false;
@@ -47,16 +74,11 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
     }
   }, []);
 
-  const cancelFetch = () => {
-    cancelledRef.current = true;
-    setLoading(false);
-    setError(null);
-  };
-
   useEffect(() => {
+    if (config.skill_path) fetchHotspots();
     fetchTopics();
     return () => { cancelledRef.current = true; };
-  }, [fetchTopics]);
+  }, [fetchHotspots, fetchTopics, config.skill_path]);
 
   const handleSelect = () => {
     if (topics[selected]) {
@@ -69,9 +91,11 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-[15px] font-semibold text-[var(--color-near-black)] mb-1">选题</h2>
-          <p className="text-[13px] text-[var(--color-text-secondary)]">
-            {loading ? "AI 正在根据你的行业和受众生成选题…" : `基于你的行业，生成了 ${topics.length} 个候选选题。`}
+          <h2 className="text-[13px] font-semibold text-[var(--color-near-black)] mb-1">选题</h2>
+          <p className="text-[12px] text-[var(--color-text-secondary)]">
+            {loading
+              ? "AI 正在根据你的行业和受众生成选题…"
+              : `基于你的行业，生成了 ${topics.length} 个候选选题。`}
           </p>
         </div>
         <Button size="sm" variant="ghost" className="gap-1.5 text-[var(--color-apple-blue)]" onClick={fetchTopics} disabled={loading}>
@@ -79,6 +103,57 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
           重新生成
         </Button>
       </div>
+
+      {/* Hotspots section */}
+      {config.skill_path && (
+        <div className="flex flex-col gap-1.5">
+          <button
+            className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-near-black)] transition-colors"
+            onClick={() => setShowHotspots((v) => !v)}
+          >
+            {showHotspots ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            <TrendingUp size={13} />
+            实时热搜
+            {hotspotsLoading && <Loader2 size={11} className="animate-spin text-gray-400" />}
+            {!hotspotsLoading && hotspots.length > 0 && (
+              <Badge variant="gray">{hotspots.length} 条</Badge>
+            )}
+          </button>
+
+          {showHotspots && (
+            <div className="flex flex-col gap-1.5">
+              {hotspotsError && (
+                <p className="text-[11px] text-amber-600 px-2">{hotspotsError}</p>
+              )}
+              {hotspotsLoading ? (
+                <div className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-[var(--color-text-tertiary)]">
+                  <Loader2 size={11} className="animate-spin" /> 加载热搜中…
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {hotspots.map((h, i) => (
+                    <span
+                      key={i}
+                      className="text-[11px] px-2 py-1 rounded-full bg-red-50 border border-red-100 text-red-600 max-w-[200px] truncate cursor-default"
+                      title={h.title}
+                    >
+                      {h.title}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!config.skill_path && (
+        <p className="text-[11px] text-amber-600 px-2">
+          未配置 Skill 路径，热搜不可用。请在设置页填写后重启。
+        </p>
+      )}
+
+      <hr className="border-gray-100" />
 
       {error && (
         <div className="px-3 py-2 rounded-[var(--radius-sm)] bg-red-50 border border-red-200 text-[12px] text-red-600">
@@ -90,7 +165,10 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
         <div className="flex flex-col items-center gap-3 py-16">
           <Loader2 size={28} className="animate-spin text-gray-300" />
           <span className="text-[12px] text-[var(--color-text-tertiary)]">正在生成选题，可能需要 10-30 秒…</span>
-          <button onClick={cancelFetch} className="text-[12px] text-[var(--color-text-tertiary)] hover:text-red-500 underline">
+          <button
+            onClick={() => { cancelledRef.current = true; setLoading(false); }}
+            className="text-[12px] text-[var(--color-text-tertiary)] hover:text-red-500 underline"
+          >
             取消
           </button>
         </div>

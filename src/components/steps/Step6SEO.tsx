@@ -76,9 +76,9 @@ export function Step6SEO({ onNext, onBack }: Step6SEOProps) {
 
   // Fetch SEO keywords from Python script
   useEffect(() => {
-    if (!config.skill_path || !selectedTopic?.keywords?.length) return;
+    if (!selectedTopic?.keywords?.length) return;
     setSeoLoading(true);
-    api.seoKeywords(config.skill_path, selectedTopic.keywords)
+    api.seoKeywords(selectedTopic.keywords, selectedTopic.title)
       .then((result) => {
         if (result.success && result.keywords) {
           setSeoKeywords(result.keywords);
@@ -92,7 +92,7 @@ export function Step6SEO({ onNext, onBack }: Step6SEOProps) {
       .catch(() => {})
       .finally(() => setSeoLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTopic?.keywords, config.skill_path]);
+  }, [selectedTopic?.keywords, selectedTopic?.title]);
 
   // Fetch text analysis when article content changes
   useEffect(() => {

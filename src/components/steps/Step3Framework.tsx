@@ -75,12 +75,11 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
   const keywords = selectedTopic?.keywords || [];
 
   const handleCollectMaterials = async () => {
-    if (!config.skill_path || !topic) return;
+    if (!topic) return;
     setCollecting(true);
     setCollectError(null);
     try {
       const result = await api.collectMaterials(
-        config.skill_path,
         topic,
         FRAMEWORK_LABELS[selectedFramework] || selectedFramework,
         keywords
@@ -100,7 +99,7 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
 
   // Auto-collect when framework changes and topic is available
   useEffect(() => {
-    if (topic && config.skill_path && !confirmed) {
+    if (topic && !confirmed) {
       setMaterials([]);
       setCollectedMaterials([]);
     }
@@ -109,7 +108,7 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
       const matched = Object.entries(FRAMEWORK_LABELS).find(([, v]) => v === selectedTopic.framework);
       if (matched) setSelectedFramework(matched[0]);
     }
-  }, [selectedTopic, topic, config.skill_path]);
+  }, [selectedTopic, topic]);
 
   const handleConfirm = () => {
     setConfirmed(true);
@@ -159,7 +158,7 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
       </div>
 
       {/* Material collection */}
-      {topic && config.skill_path && (
+      {topic && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <Button
@@ -222,16 +221,10 @@ export function Step3Framework({ onNext, onBack }: Step3FrameworkProps) {
         </div>
       )}
 
-      {topic && !config.skill_path && (
-        <div className="px-3 py-2 rounded-[var(--radius-sm)] bg-amber-50 border border-amber-200 text-[12px] text-amber-700">
-          未配置 WeWrite Skill 路径（设置页），素材采集将使用 AI 内置知识。建议前往设置页填写。
-        </div>
-      )}
-
       <div className="flex items-center justify-between pt-1">
         <Button size="md" variant="secondary" onClick={onBack}>上一步</Button>
         <div className="flex items-center gap-2">
-          {topic && config.skill_path && materials.length > 0 && !confirmed && (
+          {topic && materials.length > 0 && !confirmed && (
             <Button size="md" variant="secondary" onClick={handleConfirm}>
               确认素材
             </Button>

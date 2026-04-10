@@ -102,9 +102,8 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
   const [generatingInline, setGeneratingInline] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<"select-cover" | "inline">("select-cover");
 
-  // Load visual-prompts.md from skill_path on mount
+  // Load visual-prompts.md (builtin + optional skill_path override)
   useEffect(() => {
-    if (!config.skill_path) return;
     setPromptsLoading(true);
     api.readVisualPrompts(config.skill_path)
       .then((result) => {
@@ -113,7 +112,7 @@ export function Step7Images({ onNext, onBack }: Step7ImagesProps) {
           setCoverVariants(buildCoverVariants(topic, result.data as VisualPrompts));
         }
       })
-      .catch(() => { /* silent - fallback to hardcoded prompts */ })
+      .catch(() => { /* silent - uses builtin prompts */ })
       .finally(() => setPromptsLoading(false));
   }, [config.skill_path, topic]);
 

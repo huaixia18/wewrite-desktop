@@ -159,20 +159,19 @@ export const api = {
       { oldPath, newPath }
     ),
 
-  fetchHotspots: (skillPath: string, limit?: number) =>
+  fetchHotspots: (limit?: number) =>
     invoke<{ success: boolean; hotspots: Hotspot[]; error?: string }>(
       "fetch_hotspots",
-      { skillPath, limit: limit ?? 30 }
+      { limit: limit ?? 30 }
     ),
 
-  seoKeywords: (skillPath: string, keywords: string[]) =>
+  seoKeywords: (keywords: string[], topic?: string) =>
     invoke<{ success: boolean; keywords: KeywordResult[]; error?: string }>(
       "seo_keywords",
-      { skillPath, keywords }
+      { keywords, topic }
     ),
 
   collectMaterials: (
-    skillPath: string,
     topic: string,
     framework: string,
     keywords: string[]
@@ -181,29 +180,29 @@ export const api = {
       success: boolean;
       materials: MaterialResult[];
       topic: string;
-      query_used?: string;
       error?: string;
-    }>("collect_materials", { skillPath, topic, framework, keywords }),
+    }>("collect_materials", { topic, framework, keywords }),
 
-  humannessScore: (skillPath: string, articlePath: string, tier3?: number) =>
+  humannessScore: (article: string, tier3?: number) =>
     invoke<{
       success: boolean;
       composite_score?: number;
       param_scores?: Record<string, number>;
+      issues?: string[];
+      suggestions?: string[];
       error?: string;
-    }>("humanness_score", { skillPath, articlePath, tier3 }),
+    }>("humanness_score", { article, tier3 }),
 
-  checkPythonEnv: (skillPath: string) =>
+  checkPythonEnv: () =>
     invoke<{
       success: boolean;
       python_version?: string;
       deps_ok?: boolean;
-      has_hotspots_script?: boolean;
-      has_seo_script?: boolean;
-      error?: string;
-    }>("check_python_env", { skillPath }),
+      has_api_key?: boolean;
+      message?: string;
+    }>("check_python_env"),
 
-  readVisualPrompts: (skillPath: string) =>
+  readVisualPrompts: (skillPath?: string) =>
     invoke<{
       success: boolean;
       data?: {

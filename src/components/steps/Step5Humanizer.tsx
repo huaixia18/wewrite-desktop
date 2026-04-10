@@ -54,11 +54,7 @@ export function Step5Humanizer({ onNext, onBack }: Step5HumanizerProps) {
       // Run humanness_score.py if skill_path is configured
       if (config.skill_path) {
         try {
-          // Write fixed content to temp file via Rust
-          const tempPath = `/tmp/wewrite_score_${Date.now()}.md`;
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("write_temp_file", { path: tempPath, content: result.fixed });
-          const scoreResult = await api.humannessScore(config.skill_path, tempPath);
+          const scoreResult = await api.humannessScore(result.fixed);
           if (scoreResult.success && scoreResult.composite_score !== undefined) {
             const score = scoreResult.composite_score;
             setStoreCompositeScore(score);

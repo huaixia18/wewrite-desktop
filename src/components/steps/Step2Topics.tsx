@@ -36,13 +36,12 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
 
   const cancelledRef = { current: false };
 
-  // Fetch hotspots from Python script
+  // Fetch hotspots using LLM
   const fetchHotspots = useCallback(async () => {
-    if (!config.skill_path) return;
     setHotspotsLoading(true);
     setHotspotsError(null);
     try {
-      const result = await api.fetchHotspots(config.skill_path, 30);
+      const result = await api.fetchHotspots(30);
       if (result.success && result.hotspots) {
         setHotspots(result.hotspots as Hotspot[]);
       } else {
@@ -53,7 +52,7 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
     } finally {
       setHotspotsLoading(false);
     }
-  }, [config.skill_path, setHotspots]);
+  }, [setHotspots]);
 
   const fetchTopics = useCallback(async () => {
     cancelledRef.current = false;
@@ -75,10 +74,10 @@ export function Step2Topics({ onNext, onBack, onTopicSelected }: Step2TopicsProp
   }, []);
 
   useEffect(() => {
-    if (config.skill_path) fetchHotspots();
+    fetchHotspots();
     fetchTopics();
     return () => { cancelledRef.current = true; };
-  }, [fetchHotspots, fetchTopics, config.skill_path]);
+  }, [fetchHotspots, fetchTopics]);
 
   const handleSelect = () => {
     if (topics[selected]) {

@@ -24,7 +24,7 @@ export function Step1EnvCheck({ onNext }: Step1EnvCheckProps) {
   const [items, setItems] = useState<CheckItem[]>([]);
   const [checked, setChecked] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [pythonInfo, setPythonInfo] = useState<{ deps_ok: boolean; python_version?: string } | null>(null);
+  const [pythonInfo, setPythonInfo] = useState<{ deps_ok: boolean; python_version?: string; has_api_key?: boolean } | null>(null);
   const navigate = useNavigate();
 
   // Load config from SQLite on mount
@@ -35,17 +35,20 @@ export function Step1EnvCheck({ onNext }: Step1EnvCheckProps) {
       .finally(() => setLoading(false));
   }, [setConfig]);
 
-  // Check Python environment
+  // Check environment — Python not required anymore
   useEffect(() => {
-    if (!config.skill_path) return;
-    api.checkPythonEnv(config.skill_path)
+    api.checkPythonEnv()
       .then((result) => {
         if (result.success) {
-          setPythonInfo({ deps_ok: !!result.deps_ok, python_version: result.python_version });
+          setPythonInfo({
+            deps_ok: result.deps_ok ?? true,
+            python_version: result.python_version,
+            has_api_key: result.has_api_key ?? false,
+          });
         }
       })
       .catch(() => {});
-  }, [config.skill_path]);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -53,26 +56,19 @@ export function Step1EnvCheck({ onNext }: Step1EnvCheckProps) {
       {
         id: "ai_key",
         label: "AI API Key",
-        description: "Claude / GPT 密钥",
+        description: "Claude / GPT 密钥（核心配置）",
         status: config.api_key ? "ok" : "warning",
         ...(config.api_key ? {} : { actionLabel: "去设置", actionTarget: "/settings" }),
       },
       {
         id: "python_env",
         label: "Python 环境",
-        description: config.skill_path
-          ? pythonInfo
-            ? pythonInfo.deps_ok
-              ? `Python ${pythonInfo.python_version ?? "未知"}，依赖齐全`
-              : "缺少 requests / beautifulsoup4"
-            : "检查中…"
-          : "未设置 Skill 路径，请在设置页配置",
-        status: config.skill_path
-          ? pythonInfo
-            ? pythonInfo.deps_ok ? "ok" : "warning"
-            : "checking"
-          : "warning",
-        ...(config.skill_path ? {} : { actionLabel: "去设置", actionTarget: "/settings" }),
+        description: pythonInfo?.has_api_key
+          ? "无需 Python，AI Key 已配置"
+          : pythonInfo?.python_version
+          ? `Python ${pythonInfo.python_version} 可用（可选，非必需）`
+          : "可选，不影响核心功能",
+        status: "ok",
       },
       {
         id: "wechat",

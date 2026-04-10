@@ -366,7 +366,7 @@ fn extract_section(content: &str, section_name: &str) -> Option<String> {
     let mut in_section = false;
     let mut result = Vec::new();
 
-    for (i, line) in lines.iter().enumerate() {
+    for (_i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         if trimmed == section_name || trimmed.starts_with(&format!("## {}", section_name)) {
             in_section = true;

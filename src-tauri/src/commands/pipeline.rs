@@ -799,16 +799,15 @@ async fn write_article_internal(
     let dimension_text = dimension_randomization();
 
     let persona = "midnight-friend";
-    let style = "口语化、有情绪、有人味";
 
     let industry = get_config("industry").unwrap_or_else(|| "AI/互联网".to_string());
     let content_dirs = get_config("content_dirs").unwrap_or_default();
     let tone = get_config("tone").unwrap_or_else(|| "轻松幽默".to_string());
     let blacklist = get_config("forbidden_words")
-        .map(|s| s.split(',').map(str::trim).filter(|s| !s.is_empty()).collect::<Vec<_>>())
+        .map(|s| s.split(',').filter(|x| !x.trim().is_empty()).map(|x| x.trim().to_string()).collect::<Vec<_>>())
         .unwrap_or_default();
 
-    let writing_guide_text = include_str!("../../references/writing-guide.md");
+    let writing_guide_text = include_str!("../references/writing-guide.md");
     let wcfg = WritingConfig::default();
 
     let account_name = get_config("account_name").unwrap_or_else(|| "该领域".to_string());
@@ -829,6 +828,8 @@ async fn write_article_internal(
     // ── Phase 1: Main article ──────────────────────────────────────────────
     let system = &format!(
         r#"你是公众号"{}"的专业写作者。
+
+{}
 
 {}
 
@@ -877,6 +878,7 @@ async fn write_article_internal(
         writing_guide_text,
         persona_text(&persona),
         framework_constraints(framework),
+        "",  // blank placeholder for writing guide section
         account_name,
         industry,
         content_dirs,
@@ -887,6 +889,7 @@ async fn write_article_internal(
         if blacklist.is_empty() { 2 } else { 3 },
         if wcfg.style_drift > 0.3 { "有意识地做" } else { "" },
         playbook_text(skill_path.as_deref()),
+        "",  // blank placeholder for 个性化写作规则 section
         exemplar_text(skill_path.as_deref(), framework),
         framework,
     );

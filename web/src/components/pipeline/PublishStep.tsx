@@ -3,23 +3,21 @@
 import { useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   Send,
-  Eye,
   Copy,
   CheckCircle2,
-  ExternalLink,
   Loader2,
-  Code,
   Smartphone,
 } from "lucide-react";
 
-// 16 套排版主题
+/* ─── Apple Step: Publish ───────────────────────────────────────────────
+ * Theme picker + phone mockup preview + WeChat publish
+ */
 const THEMES = [
   { id: "professional-clean", name: "专业简洁", emoji: "📄", category: "通用" },
   { id: "minimal", name: "极简", emoji: "⬜", category: "通用" },
@@ -35,15 +33,6 @@ const THEMES = [
   { id: "bold-green", name: "森林绿", emoji: "🌲", category: "商业" },
 ];
 
-const THEME_CSS: Record<string, string> = {
-  "professional-clean": "font-family: 'PingFang SC', sans-serif; --theme-accent: #0071e3;",
-  minimal: "font-family: 'PingFang SC', sans-serif; --theme-accent: #1d1d1f;",
-  newspaper: "font-family: 'Songti SC', serif; --theme-accent: #000;",
-  "tech-modern": "font-family: 'PingFang SC', sans-serif; --theme-accent: #2997ff;",
-  bytedance: "font-family: 'PingFang SC', sans-serif; --theme-accent: #fe2c55;",
-  github: "font-family: 'SF Mono', monospace; --theme-accent: #238636;",
-};
-
 export function PublishStep() {
   const { article, setArticle, resetPipeline } = usePipelineStore();
   const [selectedTheme, setSelectedTheme] = useState("professional-clean");
@@ -52,7 +41,6 @@ export function PublishStep() {
   const [copied, setCopied] = useState(false);
   const [published, setPublished] = useState(false);
 
-  // 生成微信 HTML 预览
   const generatePreview = async () => {
     setLoading(true);
     try {
@@ -73,14 +61,12 @@ export function PublishStep() {
     }
   };
 
-  // 复制 HTML
   const copyHtml = () => {
     navigator.clipboard.writeText(previewHtml);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 推送到微信草稿箱
   const publishToWechat = async () => {
     setLoading(true);
     try {
@@ -104,7 +90,6 @@ export function PublishStep() {
     }
   };
 
-  // 模拟预览 HTML（实时展示）
   const livePreviewHtml = `
     <div style="font-family: 'PingFang SC', sans-serif; max-width: 677px; margin: 0 auto; padding: 20px; color: #333;">
       <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px; line-height: 1.4;">
@@ -119,151 +104,171 @@ export function PublishStep() {
 
   return (
     <div className="flex h-full">
-      {/* 左侧：主题选择 */}
-      <div className="w-[260px] shrink-0 border-r overflow-auto p-4 space-y-4">
+      {/* ── Left: Theme Picker ── */}
+      <div className="w-[260px] shrink-0 border-r border-black/[0.06] overflow-auto p-5 space-y-4 bg-[#fafafa]">
         <div>
-          <h2 className="text-[13px] font-semibold">排版主题</h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">共 12 套主题</p>
+          <h2 className="text-[17px] font-semibold tracking-[-0.374px] text-[#1d1d1f]">
+            排版主题
+          </h2>
+          <p className="text-[13px] text-[rgba(0,0,0,0.32)] mt-0.5 tracking-[-0.224px]">
+            共 {THEMES.length} 套主题
+          </p>
         </div>
         <div className="space-y-1.5">
           {THEMES.map((theme) => (
             <button
               key={theme.id}
               className={cn(
-                "w-full text-left px-3 py-2 rounded-lg transition-all text-[12px] flex items-center gap-2",
+                "w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-3",
                 selectedTheme === theme.id
-                  ? "bg-blue-50 border border-blue-200 text-blue-700"
-                  : "hover:bg-muted/50"
+                  ? "bg-[#0071e3]/8 ring-2 ring-[#0071e3]/30"
+                  : "hover:bg-black/[0.03]"
               )}
               onClick={() => setSelectedTheme(theme.id)}
             >
-              <span>{theme.emoji}</span>
-              <span className="flex-1">{theme.name}</span>
-              <Badge variant="outline" className="text-[9px]">
-                {theme.category}
-              </Badge>
+              <span className="text-[20px] leading-none">{theme.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium tracking-[-0.224px] text-[#1d1d1f]">
+                  {theme.name}
+                </p>
+                <p className="text-[11px] text-[rgba(0,0,0,0.32)] tracking-[-0.12px] mt-0.5">
+                  {theme.category}
+                </p>
+              </div>
+              {selectedTheme === theme.id && (
+                <CheckCircle2 className="h-4 w-4 text-[#0071e3] shrink-0" />
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 中间：预览 */}
-      <div className="flex-1 overflow-auto bg-muted/30">
-        <div className="flex items-center justify-between px-4 py-2 border-b bg-background/80">
+      {/* ── Center: Preview ── */}
+      <div className="flex-1 overflow-auto bg-[#f5f5f7]">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-black/[0.06]">
           <div className="flex items-center gap-2">
             <Button
-              size="sm"
               variant="outline"
-              className="gap-1.5 text-[12px] h-7"
+              size="sm"
+              className="gap-1.5 h-9 text-[14px] border-[rgba(0,0,0,0.08)]"
               onClick={generatePreview}
               disabled={loading}
             >
-              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               刷新预览
             </Button>
           </div>
           <div className="flex items-center gap-2">
             <Button
-              size="sm"
               variant="outline"
-              className="gap-1.5 text-[12px] h-7"
+              size="sm"
+              className="gap-1.5 h-9 text-[14px] border-[rgba(0,0,0,0.08)]"
               onClick={copyHtml}
               disabled={!previewHtml}
             >
-              {copied ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+              {copied ? (
+                <CheckCircle2 className="h-4 w-4 text-[#34c759]" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
               {copied ? "已复制" : "复制 HTML"}
             </Button>
             <Button
-              size="sm"
-              className="gap-1.5 text-[12px] h-7 bg-green-600 hover:bg-green-700"
+              variant="pill-filled"
+              size="pill-sm"
+              className="gap-1.5 h-9 px-5"
               onClick={publishToWechat}
               disabled={loading || !previewHtml}
             >
-              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               推送草稿箱
             </Button>
           </div>
         </div>
 
-        {/* 手机预览 */}
-        <div className="flex items-center justify-center p-6">
-          <div className="w-[375px] border rounded-[40px] shadow-xl overflow-hidden bg-white">
-            <div className="h-8 bg-black flex items-center justify-center">
-              <div className="w-20 h-5 bg-black rounded-full" />
+        {/* Phone mockup */}
+        <div className="flex items-center justify-center p-8">
+          <div className="w-[375px] rounded-[40px] overflow-hidden shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] bg-white border border-black/[0.06]">
+            {/* Notch */}
+            <div className="h-12 bg-black flex items-center justify-center">
+              <div className="w-28 h-6 bg-black rounded-full" />
             </div>
-            <div className="overflow-auto" style={{ height: "calc(100vh - 100px)" }}>
-              <div dangerouslySetInnerHTML={{ __html: previewHtml || livePreviewHtml }} />
+            {/* Content */}
+            <div
+              className="overflow-auto"
+              style={{ height: "calc(100vh - 200px)" }}
+            >
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: previewHtml || livePreviewHtml,
+                }}
+              />
             </div>
           </div>
         </div>
 
-        {/* 发布成功 */}
+        {/* Published success */}
         {published && (
-          <Card className="mx-6 mb-6 bg-green-50/50 border-green-200">
-            <CardContent className="p-4 flex items-center gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-[13px] font-medium text-green-700">已推送到微信草稿箱</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  media_id: {article.mediaId}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto gap-1.5 h-7 text-[11px]"
-                onClick={resetPipeline}
-              >
-                再写一篇
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="mx-6 mb-6 p-4 rounded-2xl bg-[#34c759]/8 border border-[#34c759]/20 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-[#34c759] shrink-0" />
+            <div>
+              <p className="text-[14px] font-semibold text-[#1d1d1f]">已推送到微信草稿箱</p>
+              <p className="text-[12px] text-[rgba(0,0,0,0.48)] mt-0.5">
+                media_id: {article.mediaId}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-8 text-[13px] border-[rgba(0,0,0,0.08)]"
+              onClick={resetPipeline}
+            >
+              再写一篇
+            </Button>
+          </div>
         )}
       </div>
 
-      {/* 右侧：元数据 */}
-      <div className="w-[220px] shrink-0 border-l overflow-auto p-4 space-y-4">
+      {/* ── Right: Meta ── */}
+      <div className="w-[220px] shrink-0 border-l border-black/[0.06] overflow-auto p-5 space-y-4 bg-[#fafafa]">
         <div>
-          <h2 className="text-[13px] font-semibold">发布信息</h2>
+          <h2 className="text-[14px] font-semibold tracking-[-0.224px] text-[#1d1d1f]">
+            发布信息
+          </h2>
         </div>
 
-        <div className="space-y-3 text-[12px]">
-          <div>
-            <span className="text-muted-foreground">标题</span>
-            <p className="font-medium mt-0.5">{article.seoTitle || article.title || "—"}</p>
-          </div>
+        <div className="space-y-4">
+          {[
+            { label: "标题", value: article.seoTitle || article.title || "—" },
+            { label: "摘要", value: article.seoAbstract || "—" },
+            { label: "字数", value: `${article.wordCount ?? "—"} 字` },
+            { label: "人类感评分", value: `${article.humanizerReport?.score ?? "—"} 分` },
+            { label: "主题", value: THEMES.find((t) => t.id === selectedTheme)?.name },
+          ].map(({ label, value }) => (
+            <div key={label} className="space-y-1">
+              <p className="text-[12px] text-[rgba(0,0,0,0.32)] tracking-[-0.12px]">{label}</p>
+              <p className="text-[13px] font-medium tracking-[-0.224px] text-[#1d1d1f] leading-[1.3]">
+                {value}
+              </p>
+            </div>
+          ))}
+
           <Separator />
-          <div>
-            <span className="text-muted-foreground">摘要</span>
-            <p className="mt-0.5 leading-relaxed">{article.seoAbstract || "—"}</p>
-          </div>
-          <Separator />
-          <div>
-            <span className="text-muted-foreground">标签</span>
-            <div className="flex flex-wrap gap-1 mt-1">
+
+          <div className="space-y-1.5">
+            <p className="text-[12px] text-[rgba(0,0,0,0.32)] tracking-[-0.12px]">标签</p>
+            <div className="flex flex-wrap gap-1">
               {(article.seoTags ?? []).map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-[10px]">
+                <Badge
+                  key={tag}
+                  variant="outline"
+                  className="text-[11px] font-medium tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0"
+                >
                   {tag}
                 </Badge>
               ))}
             </div>
-          </div>
-          <Separator />
-          <div>
-            <span className="text-muted-foreground">字数</span>
-            <p className="font-medium mt-0.5">{article.wordCount ?? "—"} 字</p>
-          </div>
-          <Separator />
-          <div>
-            <span className="text-muted-foreground">人类感评分</span>
-            <p className="font-medium mt-0.5">
-              {article.humanizerReport?.score ?? "—"} 分
-            </p>
-          </div>
-          <Separator />
-          <div>
-            <span className="text-muted-foreground">主题</span>
-            <p className="font-medium mt-0.5">{THEMES.find((t) => t.id === selectedTheme)?.name}</p>
           </div>
         </div>
       </div>

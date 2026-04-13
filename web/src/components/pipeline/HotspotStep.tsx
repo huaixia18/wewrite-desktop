@@ -2,10 +2,11 @@
 
 import { useEffect } from "react";
 import { usePipelineStore } from "@/store/pipeline";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
   TrendingUp,
@@ -15,18 +16,38 @@ import {
   Loader2,
   ChevronRight,
   Flame,
+  TrendingUpIcon,
 } from "lucide-react";
 
-const platformLabels = {
-  weibo: { label: "微博", color: "bg-orange-500/10 text-orange-600 border-orange-200" },
-  toutiao: { label: "头条", color: "bg-red-500/10 text-red-600 border-red-200" },
-  baidu: { label: "百度", color: "bg-blue-500/10 text-blue-600 border-blue-200" },
+/* ─── Apple Step: Hotspot ────────────────────────────────────────────────
+ * Light gray body (#f5f5f7) with white cards
+ * Apple typography, clean metrics, blue CTAs
+ */
+const platformLabels: Record<
+  string,
+  { label: string; color: string; bg: string }
+> = {
+  weibo: {
+    label: "微博",
+    color: "#ff8200",
+    bg: "bg-[#ff8200]/10",
+  },
+  toutiao: {
+    label: "头条",
+    color: "#ea0d11",
+    bg: "bg-[#ea0d11]/10",
+  },
+  baidu: {
+    label: "百度",
+    color: "#2932e1",
+    bg: "bg-[#2932e1]/10",
+  },
 };
 
-const trendIcons = {
-  rising: { icon: TrendingUp, label: "上升", color: "text-red-500" },
-  stable: { icon: Minus, label: "持平", color: "text-gray-400" },
-  fading: { icon: TrendingDown, label: "下降", color: "text-blue-400" },
+const trendConfig = {
+  rising: { icon: TrendingUp, label: "上升", color: "#ff3b30" },
+  stable: { icon: Minus, label: "持平", color: "#8e8e93" },
+  fading: { icon: TrendingDown, label: "下降", color: "#0071e3" },
 };
 
 export function HotspotStep() {
@@ -37,10 +58,7 @@ export function HotspotStep() {
     setHotspotsLoading,
     setProgressText,
     currentStep,
-    setCurrentStep,
     nextStep,
-    isRunning,
-    runMode,
   } = usePipelineStore();
 
   const fetchHotspots = async () => {
@@ -60,25 +78,27 @@ export function HotspotStep() {
     }
   };
 
-  // 自动/交互模式下，当前步骤自动触发
   useEffect(() => {
     if (currentStep === 1 && hotspots.length === 0 && !hotspotsLoading) {
       fetchHotspots();
     }
   }, [currentStep]);
 
-  // 写作完成后跳回第一步
-  const handleNext = () => {
-    nextStep();
-  };
+  const handleNext = () => nextStep();
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* 标题 */}
-      <div className="flex items-center justify-between">
+    <div className="max-w-[880px] mx-auto px-8 py-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight">热点抓取</h1>
-          <p className="text-[13px] text-muted-foreground mt-0.5">
+          <h2
+            className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]"
+          >
+            热点抓取
+          </h2>
+          <p
+            className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1"
+          >
             实时聚合微博热搜、头条热榜、百度指数，筛选高潜力话题
           </p>
         </div>
@@ -87,134 +107,171 @@ export function HotspotStep() {
           size="sm"
           onClick={fetchHotspots}
           disabled={hotspotsLoading}
-          className="gap-1.5"
+          className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px] shrink-0"
         >
-          <RefreshCw className={cn("h-3.5 w-3.5", hotspotsLoading && "animate-spin")} />
+          <RefreshCw
+            className={cn("h-4 w-4", hotspotsLoading && "animate-spin")}
+          />
           刷新
         </Button>
       </div>
 
-      {/* 平台标签 */}
-      <div className="flex items-center gap-3">
+      {/* Platform badges */}
+      <div className="flex items-center gap-2">
         {Object.entries(platformLabels).map(([key, val]) => (
-          <Badge key={key} variant="outline" className={cn("text-[12px]", val.color)}>
+          <Badge
+            key={key}
+            variant="outline"
+            className={cn(
+              "text-[12px] font-medium tracking-[-0.12px]",
+              "border-0",
+              val.bg
+            )}
+            style={{ color: val.color }}
+          >
             {val.label}
           </Badge>
         ))}
-        <Badge variant="outline" className="text-[12px] text-muted-foreground">
+        <Separator orientation="vertical" className="h-4 mx-1" />
+        <span className="text-[13px] text-[rgba(0,0,0,0.32)] tracking-[-0.224px]">
           共 {hotspots.length} 条
-        </Badge>
+        </span>
       </div>
 
-      {/* 加载状态 */}
+      {/* Loading skeleton */}
       {hotspotsLoading && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {[...Array(5)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="h-20" />
-            </Card>
+            <div
+              key={i}
+              className="h-[88px] rounded-2xl bg-white/60 animate-pulse"
+            />
           ))}
         </div>
       )}
 
-      {/* 热点列表 */}
+      {/* Hotspot list */}
       {!hotspotsLoading && hotspots.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {hotspots.map((hotspot, index) => {
             const platform = platformLabels[hotspot.platform];
-            const trend = trendIcons[hotspot.trend];
+            const trend = trendConfig[hotspot.trend];
             const TrendIcon = trend.icon;
             const isTop3 = index < 3;
 
             return (
-              <Card
+              <div
                 key={hotspot.id}
                 className={cn(
-                  "transition-all duration-200 hover:shadow-md cursor-pointer border-l-4",
-                  isTop3 ? "border-l-orange-400" : "border-l-transparent"
+                  "bg-white rounded-2xl p-5",
+                  "border-l-4 transition-all duration-200",
+                  "hover:shadow-[rgba(0,0,0,0.08)_0_2px_12px_0px]",
+                  isTop3 ? "border-l-[#ff9500]" : "border-l-transparent"
                 )}
               >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    {/* 排名 */}
-                    <div
-                      className={cn(
-                        "flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold shrink-0 mt-0.5",
-                        isTop3 ? "bg-orange-500 text-white" : "bg-muted text-muted-foreground"
+                <div className="flex items-start gap-4">
+                  {/* Rank */}
+                  <div
+                    className={cn(
+                      "flex items-center justify-center w-8 h-8 rounded-full shrink-0 mt-0.5",
+                      "text-[13px] font-semibold tracking-[-0.224px]",
+                      isTop3
+                        ? "bg-[#ff9500] text-white"
+                        : "bg-[#f5f5f7] text-[rgba(0,0,0,0.32)]"
+                    )}
+                  >
+                    {index + 1}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    {/* Meta row */}
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] font-medium tracking-[-0.12px] border-0"
+                        style={{ background: platform.bg, color: platform.color }}
+                      >
+                        {platform.label}
+                      </Badge>
+                      {isTop3 && (
+                        <Badge
+                          variant="outline"
+                          className="text-[11px] font-medium tracking-[-0.12px] border-0 bg-[#ff3b30]/10 text-[#ff3b30]"
+                        >
+                          <Flame className="h-2.5 w-2.5 mr-0.5" />
+                          TOP
+                        </Badge>
                       )}
-                    >
-                      {index + 1}
+                      <span
+                        className="flex items-center gap-0.5 text-[12px] font-medium"
+                        style={{ color: trend.color }}
+                      >
+                        <TrendIcon className="h-3 w-3" />
+                        {trend.label}
+                      </span>
+                      {/* Score bar */}
+                      <div className="ml-auto flex items-center gap-2">
+                        <Progress
+                          value={hotspot.score}
+                          className="w-[80px] h-[3px]"
+                        />
+                        <span className="text-[12px] font-mono text-[rgba(0,0,0,0.32)] w-5 text-right">
+                          {hotspot.score}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className={cn("text-[10px]", platform.color)}>
-                          {platform.label}
+                    {/* Title */}
+                    <p
+                      className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] text-[#1d1d1f]"
+                    >
+                      {hotspot.title}
+                    </p>
+
+                    {/* Keywords */}
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      {hotspot.keywords.slice(0, 4).map((kw) => (
+                        <Badge
+                          key={kw}
+                          variant="outline"
+                          className="text-[11px] tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0"
+                        >
+                          {kw}
                         </Badge>
-                        {isTop3 && (
-                          <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-600 border-orange-200">
-                            <Flame className="h-2.5 w-2.5 mr-0.5 inline" />
-                            TOP
-                          </Badge>
-                        )}
-                        <div className={cn("flex items-center gap-0.5 text-[11px]", trend.color)}>
-                          <TrendIcon className="h-3 w-3" />
-                          <span>{trend.label}</span>
-                        </div>
-                        {/* 热度分数 */}
-                        <div className="ml-auto flex items-center gap-1.5">
-                          <Progress value={hotspot.score} className="w-16 h-1.5" />
-                          <span className="text-[11px] text-muted-foreground font-mono">
-                            {hotspot.score}
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="text-[14px] font-medium mt-1.5 leading-snug">
-                        {hotspot.title}
-                      </p>
-
-                      {/* 关键词 */}
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        {hotspot.keywords.slice(0, 4).map((kw) => (
-                          <Badge
-                            key={kw}
-                            variant="secondary"
-                            className="text-[10px] px-1.5 py-0"
-                          >
-                            {kw}
-                          </Badge>
-                        ))}
-                      </div>
+                      ))}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>
       )}
 
-      {/* 空状态 */}
+      {/* Empty state */}
       {!hotspotsLoading && hotspots.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-3">
-            <div className="text-4xl opacity-20">🔍</div>
-            <div className="text-center">
-              <p className="text-[14px] font-medium">暂无热点数据</p>
-              <p className="text-[12px] text-muted-foreground mt-1">
-                点击刷新按钮重新抓取
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="w-16 h-16 rounded-full bg-[#f5f5f7] flex items-center justify-center">
+            <TrendingUpIcon className="h-8 w-8 text-[rgba(0,0,0,0.12)]" />
+          </div>
+          <div className="text-center">
+            <p className="text-[17px] font-semibold tracking-[-0.374px] text-[#1d1d1f]">
+              暂无热点数据
+            </p>
+            <p className="text-[14px] tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
+              点击刷新按钮重新抓取
+            </p>
+          </div>
+        </div>
       )}
 
-      {/* 下一步 */}
+      {/* CTA */}
       {hotspots.length > 0 && (
         <div className="flex justify-end pt-2">
           <Button
-            className="gap-1.5 bg-blue-500 hover:bg-blue-600"
+            variant="pill-filled"
+            size="pill-sm"
+            className="gap-1.5 h-10 px-5"
             onClick={handleNext}
           >
             去选题

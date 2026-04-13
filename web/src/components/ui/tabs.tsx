@@ -5,6 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/* ─── Apple Tabs Root ───────────────────────────────────────────────── */
 function Tabs({
   className,
   orientation = "horizontal",
@@ -14,22 +15,25 @@ function Tabs({
     <TabsPrimitive.Root
       data-slot="tabs"
       data-orientation={orientation}
-      className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
-        className
-      )}
+      className={cn("group/tabs flex gap-2", className)}
       {...props}
     />
   )
 }
 
+/* ─── Apple Tabs List ───────────────────────────────────────────────── */
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  "inline-flex items-center justify-center gap-1 rounded-[11px] p-[3px]",
   {
     variants: {
       variant: {
-        default: "bg-muted",
-        line: "gap-1 bg-transparent",
+        /* Pill background — default Apple style */
+        default: "bg-black/[0.04] dark:bg-white/[0.06]",
+        /* Transparent underline style */
+        line:
+          "bg-transparent gap-0 p-0 rounded-none",
+        /* Ghost — minimal */
+        ghost: "bg-transparent p-0 rounded-none",
       },
     },
     defaultVariants: {
@@ -47,21 +51,8 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant={variant}
-      className={cn(tabsListVariants({ variant }), className)}
-      {...props}
-    />
-  )
-}
-
-function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
-  return (
-    <TabsPrimitive.Tab
-      data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
-        "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
-        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        tabsListVariants({ variant }),
         className
       )}
       {...props}
@@ -69,11 +60,52 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   )
 }
 
+/* ─── Apple Tab Trigger ──────────────────────────────────────────────── */
+function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
+  return (
+    <TabsPrimitive.Tab
+      data-slot="tabs-trigger"
+      className={cn(
+        "relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap",
+        // Typography — Apple body emphasis
+        "text-[14px] font-semibold tracking-[-0.224px] leading-[1.1]",
+        // Padding
+        "px-[14px] py-[6px]",
+        // Transition
+        "transition-all duration-200 ease-out",
+        // Focus
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] focus-visible:ring-offset-2",
+        // Disabled
+        "disabled:pointer-events-none disabled:opacity-50",
+        // Default: muted
+        "text-[rgba(0,0,0,0.48)] dark:text-white/48",
+        // Hover: shift toward foreground
+        "hover:text-[rgba(0,0,0,0.8)] dark:hover:text-white/80",
+        // Active/selected: white on pill bg, blue on line
+        "data-selected:bg-white dark:data-selected:bg-white/10",
+        "data-selected:text-[#1d1d1f] dark:data-selected:text-white",
+        // Line variant: underline style
+        "group-data-[variant=line]/tabs-list:bg-transparent",
+        "group-data-[variant=line]/tabs-list:data-selected:text-[#0071e3] dark:group-data-[variant=line]/tabs-list:data-selected:text-[#0071e3]",
+        "group-data-[variant=line]/tabs-list:border-b-2 group-data-[variant=line]/tabs-list:data-selected:border-[#0071e3] group-data-[variant=line]/tabs-list:border-transparent group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:px-[14px]",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+/* ─── Apple Tab Content ─────────────────────────────────────────────── */
 function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none", className)}
+      className={cn(
+        "flex-1 text-[17px] leading-[1.47] tracking-[-0.374px] outline-none",
+        "mt-3",
+        className
+      )}
       {...props}
     />
   )

@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
   ChevronRight,
@@ -16,6 +17,8 @@ import {
   PlusCircle,
 } from "lucide-react";
 
+/* ─── Apple Step: Enhance ────────────────────────────────────────────────
+ */
 export function EnhanceStep() {
   const {
     selectedTopic,
@@ -57,115 +60,140 @@ export function EnhanceStep() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="max-w-[880px] mx-auto px-8 py-8 space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight">内容增强</h1>
-        <p className="text-[13px] text-muted-foreground mt-0.5">
-          通过 WebSearch 采集真实素材，让文章有料可依，拒绝 AI 空话
+        <h2 className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]">
+          内容增强
+        </h2>
+        <p className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
+          采集真实素材，让文章有料可依，拒绝 AI 空话
         </p>
       </div>
 
-      {/* 当前选题摘要 */}
-      <Card className="bg-muted/30 border-dashed">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge>{selectedFramework}</Badge>
-            <Badge>{selectedStrategy}</Badge>
-            {selectedTopic?.keywords?.slice(0, 4).map((kw) => (
-              <Badge key={kw} variant="secondary" className="text-[11px]">
-                {kw}
-              </Badge>
-            ))}
-          </div>
-          <p className="text-[13px] mt-2 font-medium">{selectedTopic?.title}</p>
-        </CardContent>
-      </Card>
+      {/* Topic summary */}
+      <div className="bg-white rounded-2xl p-5 ring-1 ring-black/[0.06]">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">
+            {selectedFramework}
+          </Badge>
+          <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0">
+            {selectedStrategy}
+          </Badge>
+          {selectedTopic?.keywords?.slice(0, 4).map((kw) => (
+            <Badge key={kw} variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0">
+              {kw}
+            </Badge>
+          ))}
+        </div>
+        <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] mt-3 text-[#1d1d1f]">
+          {selectedTopic?.title}
+        </p>
+      </div>
 
-      {/* 手动添加 */}
+      {/* Search bar */}
       <div className="flex gap-2">
-        <div className="flex-1 flex items-center gap-2 border rounded-lg px-3 py-2 bg-background">
-          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+        <div className="flex-1 flex items-center gap-3 border border-black/[0.08] rounded-[11px] px-4 py-[9px] bg-white">
+          <Search className="h-4 w-4 text-[rgba(0,0,0,0.24)] shrink-0" />
           <input
-            className="flex-1 bg-transparent outline-none text-[13px]"
+            className="flex-1 bg-transparent outline-none text-[17px]"
+            style={{ fontSize: "17px", letterSpacing: "-0.374px", color: "#1d1d1f" }}
             placeholder="手动添加素材关键词或标题..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addManualMaterial()}
           />
         </div>
-        <Button variant="outline" size="sm" onClick={addManualMaterial} className="gap-1.5">
-          <PlusCircle className="h-3.5 w-3.5" />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={addManualMaterial}
+          className="h-[42px] gap-1.5 text-[14px] border-[rgba(0,0,0,0.08)] shrink-0"
+        >
+          <PlusCircle className="h-4 w-4" />
           添加
         </Button>
         <Button
-          size="sm"
-          className="gap-1.5 bg-blue-500 hover:bg-blue-600"
+          variant="pill-filled"
+          size="pill-sm"
+          className="h-[42px] gap-1.5 text-[14px] shrink-0"
           onClick={fetchMaterials}
           disabled={loading || !selectedTopic?.keywords?.length}
         >
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           采集素材
         </Button>
       </div>
 
-      {/* 素材列表 */}
+      {/* Loading skeleton */}
       {loading && (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="h-16" />
-            </Card>
+            <div key={i} className="h-[72px] rounded-2xl bg-white/60 animate-pulse" />
           ))}
         </div>
       )}
 
+      {/* Material list */}
       {!loading && materials.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[12px] text-muted-foreground font-medium">
+          <p className="text-[13px] text-[rgba(0,0,0,0.32)] tracking-[-0.12px] font-medium">
             已采集 {materials.length} 条素材
-          </div>
+          </p>
           {materials.map((m, i) => (
-            <Card key={i}>
-              <CardContent className="p-3">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium leading-snug">{m.title}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{m.source}</p>
-                  </div>
-                  {m.url && (
-                    <a
-                      href={m.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
+            <div
+              key={i}
+              className="bg-white rounded-2xl p-4 ring-1 ring-black/[0.06] hover:shadow-[rgba(0,0,0,0.06)_0_2px_8px_0px] transition-all"
+            >
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="h-5 w-5 text-[#34c759] shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] font-semibold tracking-[-0.224px] leading-[1.3] text-[#1d1d1f]">
+                    {m.title}
+                  </p>
+                  <p className="text-[12px] tracking-[-0.12px] text-[rgba(0,0,0,0.32)] mt-1">
+                    {m.source}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                {m.url && (
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[rgba(0,0,0,0.32)] hover:text-[#0071e3] transition-colors p-1"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
 
-      {/* 空状态 */}
+      {/* Empty state */}
       {!loading && materials.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12 gap-2">
-            <Search className="h-8 w-8 text-muted-foreground/30" />
-            <p className="text-[13px] text-muted-foreground">
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="w-16 h-16 rounded-full bg-[#f5f5f7] flex items-center justify-center">
+            <Search className="h-8 w-8 text-[rgba(0,0,0,0.12)]" />
+          </div>
+          <div className="text-center">
+            <p className="text-[17px] font-semibold tracking-[-0.374px] text-[#1d1d1f]">
+              暂无素材
+            </p>
+            <p className="text-[14px] tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
               点击「采集素材」从网络获取真实信息
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      {/* 下一步 */}
+      {/* CTA */}
       <div className="flex justify-end pt-2">
         <Button
-          className="gap-1.5 bg-blue-500 hover:bg-blue-600"
+          variant="pill-filled"
+          size="pill-sm"
+          className="gap-1.5 h-10 px-5"
           onClick={nextStep}
         >
           开始写作

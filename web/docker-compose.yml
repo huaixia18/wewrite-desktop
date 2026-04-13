@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL ────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wewrite
+      POSTGRES_PASSWORD: wewrite_dev
+      POSTGRES_DB: wewrite
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wewrite -d wewrite"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── WeWrite Web ───────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Database
+      DATABASE_URL: "postgresql://wewrite:wewrite_dev@db:5432/wewrite"
+      # NextAuth
+      AUTH_SECRET: "wewrite-dev-secret-change-in-production"
+      AUTH_TRUST_HOST: "true"
+      # AI (fill in your own keys for production)
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-sk-ant-placeholder}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      # WeChat OAuth (optional)
+      WECHAT_APP_ID: "${WECHAT_APP_ID:-}"
+      WECHAT_APP_SECRET: "${WECHAT_APP_SECRET:-}"
+      # WeChat Official Account (optional)
+      WECHAT_MP_APPID: "${WECHAT_MP_APPID:-}"
+      WECHAT_MP_APPSECRET: "${WECHAT_MP_APPSECRET:-}"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

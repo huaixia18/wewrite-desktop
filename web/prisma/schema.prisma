@@ -1,0 +1,248 @@
+// WeWrite Web — Prisma Schema
+// PostgreSQL multi-user schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── 认证 ────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?   // nullable，支持微信 OAuth 免密码登录
+  nickname      String?
+  avatarUrl     String?
+  wechatOpenid  String?   @unique
+  wechatUnionid String?   @unique
+
+  // 用户的 AI 配置
+  aiProvider    String    @default("anthropic") // anthropic | openai
+  aiApiKey      String?   // 用户自己的 Key（可选）
+  model         String    @default("claude-sonnet-4-7")
+
+  // 风格配置（JSONB）
+  styleConfig   Json      @default("{}")
+
+  // 时间戳
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+
+  // 关系
+  accounts      Account[]
+  sessions      Session[]
+  articles      Article[]
+  exemplars     Exemplar[]
+  themes        Theme[]
+  playbooks     Playbook[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires   DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── 文章 ────────────────────────────────────────────────────────────────
+
+model Article {
+  id     String @id @default(cuid())
+  userId String
+
+  // 基本信息
+  title       String   @default("未命名")
+  slug        String?
+  content     String   @db.Text  // Markdown 正文
+  htmlContent String?  @db.Text  // 渲染后的微信 HTML
+  status      String   @default("draft") // draft | published | archived
+
+  // 写作流程元数据
+  topicSource    Json?  // 热点来源
+  keywords       String[]
+  framework      String? // 痛点型/故事型/清单型/...
+  enhanceStrategy String? // 角度发现/密度强化/细节锚定/真实体感
+
+  // 质量评分
+  wordCount       Int?
+  compositeScore  Float?  // 人类感综合评分
+  qualityReport   Json?   // 各维度评分详情
+
+  // Humanizer 结果
+  humanizerHits  Int     @default(0)  // 命中规则数
+  humanizerFixes Int     @default(0)  // 修复数
+  humanizerReport Json?  // 完整 29 规则检测报告
+
+  // SEO 元数据
+  seoTitle   String?
+  seoAbstract String?  @db.Text
+  seoTags    String[]
+
+  // 配图
+  coverImageUrl String?
+  coverPrompt   String?  // 生成封面时用的提示词
+  imagePrompts Json?    // 内文配图提示词数组
+
+  // 微信发布
+  mediaId   String?    // 微信草稿箱 media_id
+  wechatUrl String?    // 发布后的微信文章 URL
+
+  // 统计
+  readCount Int        @default(0)
+  likeCount Int        @default(0)
+  statsJson Json?      // 微信数据复盘原始 JSON
+
+  // 写作配置快照
+  writingConfig Json?
+
+  // 时间戳
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, status])
+  @@map("articles")
+}
+
+// ─── 风格配置 ────────────────────────────────────────────────────────────
+
+model StyleProfile {
+  id     String @id @default(cuid())
+  userId String
+
+  name   String // 如 "科技媒体风"
+  type   String @default("writing") // writing | wechat | persona
+
+  // 风格参数
+  config Json   // { topics, tone, voice, blacklist, content_style, writing_persona }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@map("style_profiles")
+}
+
+// ─── 范文库 ──────────────────────────────────────────────────────────────
+
+model Exemplar {
+  id     String @id @default(cuid())
+  userId String
+
+  title         String
+  category      String?
+  sourceAccount String?
+  sourceUrl     String?
+  content       String   @db.Text
+
+  // 范文特征提取
+  openingHook   String?  @db.Text  // 开头钩子
+  emotionalPeak String?  @db.Text  // 情绪高潮段落
+  transition    String?  @db.Text  // 转折段落
+  closing       String?  @db.Text  // 收尾
+
+  addedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("exemplars")
+}
+
+// ─── 排版主题 ────────────────────────────────────────────────────────────
+
+model Theme {
+  id     String @id @default(cuid())
+  userId String
+
+  name        String
+  css         String   @db.Text
+  preview     String?  // 预览图 URL
+  learnedFrom String?  // 学习自哪个公众号 URL
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@map("themes")
+}
+
+// ─── Playbook 规则 ───────────────────────────────────────────────────────
+
+model Playbook {
+  id     String @id @default(cuid())
+  userId String
+
+  rule      String
+  confidence Int     @default(5)  // 1-10 置信度
+  source    String? // 来源描述
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("playbooks")
+}
+
+// ─── 批量任务 ────────────────────────────────────────────────────────────
+
+model Task {
+  id       String @id @default(cuid())
+  userId   String
+
+  topic    String
+  status   String @default("pending") // pending | running | done | failed
+  priority Int    @default(0)
+
+  resultFile String?
+  error      String?  @db.Text
+
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([userId, status])
+  @@map("tasks")
+}

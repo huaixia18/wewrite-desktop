@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/http";
+import { StepStatusAlert } from "@/components/pipeline/StepStatusAlert";
+import { toast } from "sonner";
 import {
   Shield,
   Loader2,
@@ -64,10 +64,11 @@ const layerConfig: Record<string, { color: string; bg: string; border: string; l
 };
 
 export function HumanizerStep() {
-  const { article, setArticle, nextStep } = usePipelineStore();
+  const { article, setArticle, nextStep, markStepDone, setProgressText } = usePipelineStore();
   const [autoMode, setAutoMode] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [fixed, setFixed] = useState(false);
+  const [error, setError] = useState("");
   const [report, setReport] = useState<{
     hits: Array<{ ruleId: number; count: number; samples: string[] }>;
     score: number;
@@ -76,31 +77,48 @@ export function HumanizerStep() {
 
   const runHumanizer = async () => {
     if (!article.content) return;
+    setError("");
     setAnalyzing(true);
     setReport(null);
     setFixed(false);
+    setProgressText("正在执行去 AI 化扫描...");
 
     try {
-      const res = await fetch("/api/ai/humanize", {
+      const data = await fetchJson<{
+        report: {
+          hits: Array<{ ruleId: number; count: number; samples: string[] }>;
+          score: number;
+          layers: Record<string, number>;
+          fixes?: number;
+        };
+        fixed?: string;
+      }>("/api/ai/humanize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: article.content }),
       });
-      const data = await res.json();
 
       setReport(data.report);
-      setArticle({ humanizerReport: data.report });
+      setArticle({ humanizerReport: data.report as never });
 
       if (autoMode && data.fixed) {
         setArticle({ content: data.fixed });
         setFixed(true);
       }
-    } catch {
-      // ignore
+      setProgressText("去 AI 化完成");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "去 AI 化失败";
+      setError(message);
+      setProgressText("去 AI 化失败");
+      toast.error(message);
     } finally {
       setAnalyzing(false);
     }
   };
+
+  useEffect(() => {
+    if (report) markStepDone();
+  }, [report, markStepDone]);
 
   const stats = report
     ? {
@@ -146,6 +164,16 @@ export function HumanizerStep() {
       </div>
 
       {/* Stats cards */}
+      {error && (
+        <StepStatusAlert
+          variant="error"
+          title="去 AI 化失败"
+          description={error}
+          actionLabel="重新扫描"
+          onAction={() => void runHumanizer()}
+        />
+      )}
+
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
@@ -200,14 +228,7 @@ export function HumanizerStep() {
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="data-selected:bg-[#1d1d1f] data-selected:text-white data-selected:shadow-none rounded-full"
-                style={{
-                  background: "transparent",
-                  padding: "6px 16px",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  color: "#1d1d1f",
-                }}
+                className="rounded-full px-[16px] py-[6px] text-[13px] font-medium text-[#1d1d1f] hover:bg-black/[0.04] data-[active]:bg-[#1d1d1f] data-[active]:text-white aria-selected:bg-[#1d1d1f] aria-selected:text-white data-selected:bg-[#1d1d1f] data-selected:text-white"
               >
                 {tab.label}
                 {tab.count > 0 && (

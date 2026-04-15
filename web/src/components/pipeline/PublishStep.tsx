@@ -3,16 +3,17 @@
 import { useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/http";
+import { StepStatusAlert } from "@/components/pipeline/StepStatusAlert";
+import { toast } from "sonner";
 import {
   Send,
   Copy,
   CheckCircle2,
   Loader2,
-  Smartphone,
 } from "lucide-react";
 
 /* ─── Apple Step: Publish ───────────────────────────────────────────────
@@ -34,17 +35,21 @@ const THEMES = [
 ];
 
 export function PublishStep() {
-  const { article, setArticle, resetPipeline } = usePipelineStore();
+  const { article, setArticle, resetPipeline, setRuntime, runtime, setProgressText } = usePipelineStore();
   const [selectedTheme, setSelectedTheme] = useState("professional-clean");
   const [previewHtml, setPreviewHtml] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [published, setPublished] = useState(false);
+  const [error, setError] = useState("");
+  const [publishMessage, setPublishMessage] = useState("");
+  const [isBetaPublish, setIsBetaPublish] = useState(false);
 
   const generatePreview = async () => {
+    setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/articles/preview", {
+      const data = await fetchJson<{ html: string }>("/api/articles/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -54,8 +59,12 @@ export function PublishStep() {
           coverImageUrl: article.coverImageUrl,
         }),
       });
-      const data = await res.json();
       setPreviewHtml(data.html);
+      setProgressText("预览生成完成");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "预览生成失败";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -68,9 +77,16 @@ export function PublishStep() {
   };
 
   const publishToWechat = async () => {
+    setError("");
     setLoading(true);
+    setProgressText("正在推送到微信草稿箱...");
     try {
-      const res = await fetch("/api/articles/publish", {
+      const data = await fetchJson<{
+        mediaId?: string;
+        message?: string;
+        mode?: "live" | "mock";
+        beta?: boolean;
+      }>("/api/articles/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -80,11 +96,24 @@ export function PublishStep() {
           abstract: article.seoAbstract,
         }),
       });
-      const data = await res.json();
+      setRuntime({ publishMode: data.mode ?? "unknown" });
+      setPublishMessage(data.message ?? "");
+      setIsBetaPublish(Boolean(data.beta || data.mode === "mock"));
       if (data.mediaId) {
         setArticle({ mediaId: data.mediaId });
         setPublished(true);
       }
+      if (data.mode === "mock") {
+        toast.warning("当前为 Beta 模拟发布，尚未调用真实微信接口。");
+      } else {
+        toast.success("已推送到微信草稿箱");
+      }
+      setProgressText(data.mode === "mock" ? "Beta 模拟发布完成" : "发布完成");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "发布失败";
+      setError(message);
+      setProgressText("发布失败");
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -158,6 +187,12 @@ export function PublishStep() {
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               刷新预览
             </Button>
+            <Badge
+              variant="outline"
+              className="border-black/[0.08] bg-[#f5f5f7] text-[12px] tracking-[-0.12px] text-[rgba(0,0,0,0.56)]"
+            >
+              发布链路：{runtime.publishMode === "mock" ? "Beta 模拟" : runtime.publishMode === "live" ? "真实发布" : "待检测"}
+            </Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -188,6 +223,16 @@ export function PublishStep() {
         </div>
 
         {/* Phone mockup */}
+        {error && (
+          <div className="px-6 pt-6">
+            <StepStatusAlert
+              variant="error"
+              title="发布步骤失败"
+              description={error}
+            />
+          </div>
+        )}
+
         <div className="flex items-center justify-center p-8">
           <div className="w-[375px] rounded-[40px] overflow-hidden shadow-[rgba(0,0,0,0.22)_3px_5px_30px_0px] bg-white border border-black/[0.06]">
             {/* Notch */}
@@ -213,10 +258,17 @@ export function PublishStep() {
           <div className="mx-6 mb-6 p-4 rounded-2xl bg-[#34c759]/8 border border-[#34c759]/20 flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-[#34c759] shrink-0" />
             <div>
-              <p className="text-[14px] font-semibold text-[#1d1d1f]">已推送到微信草稿箱</p>
+              <p className="text-[14px] font-semibold text-[#1d1d1f]">
+                {isBetaPublish ? "Beta 模拟推送完成" : "已推送到微信草稿箱"}
+              </p>
               <p className="text-[12px] text-[rgba(0,0,0,0.48)] mt-0.5">
                 media_id: {article.mediaId}
               </p>
+              {publishMessage && (
+                <p className="text-[12px] text-[rgba(0,0,0,0.48)] mt-0.5">
+                  {publishMessage}
+                </p>
+              )}
             </div>
             <Button
               variant="outline"

@@ -12,8 +12,9 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col overflow-hidden bg-[#f5f5f7] dark:bg-[#1d1d1f]",
-        "rounded-xl",
+        "group/card flex flex-col overflow-hidden rounded-[20px] bg-white text-[#1d1d1f]",
+        "shadow-[rgba(0,0,0,0.14)_0_18px_36px_-28px]",
+        "dark:bg-[#1d1d1f] dark:text-white",
         size === "default" ? "gap-4 py-5 px-6" : "gap-3 py-4 px-4",
         className
       )}
@@ -106,7 +107,7 @@ function CardFooter({
     <div
       data-slot="card-footer"
       className={cn(
-        "mt-auto flex items-center rounded-b-xl border-t border-black/[0.08] dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02]",
+        "mt-auto flex items-center rounded-b-[20px] border-t border-black/[0.06] bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]",
         size === "sm" ? "p-4" : "p-6",
         className
       )}

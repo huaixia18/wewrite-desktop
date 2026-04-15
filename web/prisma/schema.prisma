@@ -22,12 +22,20 @@ model User {
   wechatUnionid String?   @unique
 
   // 用户的 AI 配置
-  aiProvider    String    @default("anthropic") // anthropic | openai
-  aiApiKey      String?   // 用户自己的 Key（可选）
-  model         String    @default("claude-sonnet-4-7")
+  aiProvider    String  @default("anthropic") // anthropic | openai
+  aiApiKey      String? // 已废弃：平台托管模式下不再写入
+  aiBaseUrl     String? // 已废弃：平台托管模式下不再写入
+  model         String  @default("claude-sonnet-4-7")
 
   // 风格配置（JSONB）
   styleConfig   Json      @default("{}")
+
+  // 订阅状态
+  subscriptionTier    String  @default("free")   // free | pro
+  subscriptionStatus  String  @default("active") // active | canceled | past_due | none
+  subscriptionEndsAt  DateTime?                   // 订阅到期时间（pro 用户）
+  stripeCustomerId    String?
+  stripeSessionId     String?
 
   // 时间戳
   createdAt     DateTime  @default(now())

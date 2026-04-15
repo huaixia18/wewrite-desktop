@@ -8,27 +8,22 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /* Primary CTA — Apple Blue */
         default:
-          "bg-[#0071e3] text-white hover:bg-[#0062b0] active:bg-[#005a9e] rounded-lg text-[17px] font-normal px-[15px] py-[8px] leading-[1] tracking-[normal]",
-        /* Secondary Dark */
+          "rounded-lg bg-[#0071e3] px-[15px] py-[8px] text-[17px] font-normal leading-[1] tracking-[normal] text-white hover:bg-[#0062b0] active:bg-[#005a9e]",
         secondary:
-          "bg-[#1d1d1f] text-white hover:bg-[#2d2d2f] active:bg-[#3d3d3f] rounded-lg text-[17px] font-normal px-[15px] py-[8px]",
-        /* Ghost — subtle hover */
+          "rounded-lg bg-[#1d1d1f] px-[15px] py-[8px] text-[17px] font-normal text-white hover:bg-[#2a2a2d] active:bg-[#000000]",
         ghost:
-          "text-[#1d1d1f] hover:bg-black/[0.04] active:bg-black/[0.08] dark:text-white dark:hover:bg-white/[0.08]",
-        /* Link */
+          "rounded-lg text-[#1d1d1f] hover:bg-black/[0.04] active:bg-black/[0.08] dark:text-white dark:hover:bg-white/[0.08]",
         link:
           "text-[#0066cc] underline-offset-4 hover:underline dark:text-[#2997ff]",
-        /* Destructive */
         destructive:
-          "bg-[#ff3b30] text-white hover:bg-[#d92b20] rounded-lg",
-        /* Apple Pill Outline */
+          "rounded-lg bg-[#ff3b30] text-white hover:bg-[#d92b20]",
         "pill-outline":
-          "bg-transparent border border-[#0071e3] text-[#0071e3] hover:text-[#005a9e] hover:border-[#005a9e] rounded-[980px] text-[14px] px-5 py-[8px]",
-        /* Apple Pill Filled */
+          "rounded-[980px] border border-[#0071e3] bg-transparent px-5 py-[8px] text-[14px] text-[#0071e3] hover:border-[#005a9e] hover:text-[#005a9e]",
         "pill-filled":
-          "bg-[#0071e3] text-white hover:bg-[#0062b0] rounded-[980px] text-[14px] px-5 py-[8px]",
+          "rounded-[980px] bg-[#0071e3] px-5 py-[8px] text-[14px] text-white hover:bg-[#0062b0]",
+        outline:
+          "rounded-lg border border-black/12 bg-white/80 text-[#1d1d1f] hover:bg-black/[0.03] dark:border-white/12 dark:bg-white/[0.04] dark:text-white dark:hover:bg-white/[0.08]",
       },
       size: {
         default: "h-10 px-4 gap-2 text-[17px]",

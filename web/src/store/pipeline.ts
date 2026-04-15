@@ -18,6 +18,7 @@ export const PIPELINE_STEPS = [
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 
 export type RunMode = "auto" | "interactive" | "step";
+export type RuntimeMode = "unknown" | "live" | "mock" | "fallback";
 
 // ─── 热点数据 ─────────────────────────────────────────────────────────────
 export interface Hotspot {
@@ -33,21 +34,21 @@ export interface Hotspot {
 // ─── 选题数据 ─────────────────────────────────────────────────────────────
 export interface Topic {
   id: string;
-  title: string;           // 拟写标题
-  score: number;           // 0-100
-  clickPotential: number;   // 点击潜力 1-5
-  seoScore: number;         // SEO 评分 1-10
-  framework: string;        // 推荐框架
+  title: string;
+  score: number;
+  clickPotential: number;
+  seoScore: number;
+  framework: string;
   keywords: string[];
-  reason: string;          // 选题理由
+  reason: string;
 }
 
 // ─── 文章数据 ─────────────────────────────────────────────────────────────
 export interface Article {
   id?: string;
   title: string;
-  content: string;         // Markdown 正文
-  htmlContent?: string;    // 微信 HTML
+  content: string;
+  htmlContent?: string;
   topic?: Topic;
   framework?: string;
   enhanceStrategy?: string;
@@ -89,37 +90,42 @@ export interface HumanizerHit {
 
 // ─── Store ────────────────────────────────────────────────────────────────
 interface PipelineState {
-  // 当前步骤
   currentStep: number;
   runMode: RunMode;
   isRunning: boolean;
 
-  // 热点数据
   hotspots: Hotspot[];
+  selectedHotspots: Hotspot[];
   hotspotsLoading: boolean;
 
-  // 选题数据
   topics: Topic[];
   selectedTopic: Topic | null;
 
-  // 框架选择
   selectedFramework: string | null;
   selectedStrategy: string | null;
 
-  // 写作素材
   materials: Array<{ title: string; source: string; url: string }>;
 
-  // 文章
   article: Article;
 
-  // 进度文本
   progressText: string;
+  stepDone: boolean;
+  runtime: {
+    aiMode: RuntimeMode;
+    aiProvider: string;
+    hotspotMode: RuntimeMode;
+    materialsMode: RuntimeMode;
+    publishMode: RuntimeMode;
+  };
+  cloudSyncAt: string | null;
 
-  // Actions
   setCurrentStep: (step: number) => void;
   setRunMode: (mode: RunMode) => void;
   setHotspots: (hotspots: Hotspot[]) => void;
   setHotspotsLoading: (loading: boolean) => void;
+  toggleHotspot: (hotspot: Hotspot) => void;
+  selectAllHotspots: () => void;
+  clearSelectedHotspots: () => void;
   setTopics: (topics: Topic[]) => void;
   setSelectedTopic: (topic: Topic | null) => void;
   setFramework: (framework: string | null) => void;
@@ -127,6 +133,9 @@ interface PipelineState {
   setMaterials: (materials: PipelineState["materials"]) => void;
   setArticle: (article: Partial<Article>) => void;
   setProgressText: (text: string) => void;
+  setRuntime: (runtime: Partial<PipelineState["runtime"]>) => void;
+  setCloudSyncAt: (isoTime: string | null) => void;
+  markStepDone: () => void;
   startRun: () => void;
   stopRun: () => void;
   resetPipeline: () => void;
@@ -140,22 +149,43 @@ export const usePipelineStore = create<PipelineState>()(
       runMode: "auto",
       isRunning: false,
       hotspots: [],
+      selectedHotspots: [],
       hotspotsLoading: false,
       topics: [],
       selectedTopic: null,
       selectedFramework: null,
       selectedStrategy: null,
       materials: [],
-      article: {
-        title: "",
-        content: "",
-      },
+      article: { title: "", content: "" },
+      stepDone: false,
       progressText: "就绪",
+      runtime: {
+        aiMode: "unknown",
+        aiProvider: "未检测",
+        hotspotMode: "unknown",
+        materialsMode: "unknown",
+        publishMode: "unknown",
+      },
+      cloudSyncAt: null,
 
-      setCurrentStep: (step) => set({ currentStep: step }),
+      setCurrentStep: (step) => set({ currentStep: step, stepDone: false }),
       setRunMode: (mode) => set({ runMode: mode }),
       setHotspots: (hotspots) => set({ hotspots }),
       setHotspotsLoading: (loading) => set({ hotspotsLoading: loading }),
+      toggleHotspot: (hotspot) =>
+        set((state) => {
+          const exists = state.selectedHotspots.find((h) => h.id === hotspot.id);
+          return {
+            selectedHotspots: exists
+              ? state.selectedHotspots.filter((h) => h.id !== hotspot.id)
+              : [...state.selectedHotspots, hotspot],
+          };
+        }),
+      selectAllHotspots: () =>
+        set((state) => ({
+          selectedHotspots: [...state.hotspots],
+        })),
+      clearSelectedHotspots: () => set({ selectedHotspots: [] }),
       setTopics: (topics) => set({ topics }),
       setSelectedTopic: (topic) => set({ selectedTopic: topic }),
       setFramework: (framework) => set({ selectedFramework: framework }),
@@ -164,17 +194,20 @@ export const usePipelineStore = create<PipelineState>()(
       setArticle: (article) =>
         set((state) => ({ article: { ...state.article, ...article } })),
       setProgressText: (text) => set({ progressText: text }),
+      setRuntime: (runtime) =>
+        set((state) => ({ runtime: { ...state.runtime, ...runtime } })),
+      setCloudSyncAt: (isoTime) => set({ cloudSyncAt: isoTime }),
+      markStepDone: () => set({ stepDone: true }),
       startRun: () => set({ isRunning: true }),
       stopRun: () => set({ isRunning: false }),
 
       nextStep: () => {
         const { currentStep, runMode } = get();
         if (runMode === "step" || runMode === "interactive") {
-          // 逐步/交互模式：停在当前步骤，等用户确认
           return;
         }
         if (currentStep < PIPELINE_STEPS.length) {
-          set({ currentStep: currentStep + 1 });
+          set({ currentStep: currentStep + 1, stepDone: false });
         }
       },
 
@@ -182,7 +215,9 @@ export const usePipelineStore = create<PipelineState>()(
         set({
           currentStep: 1,
           isRunning: false,
+          stepDone: false,
           hotspots: [],
+          selectedHotspots: [],
           topics: [],
           selectedTopic: null,
           selectedFramework: null,
@@ -190,15 +225,25 @@ export const usePipelineStore = create<PipelineState>()(
           materials: [],
           article: { title: "", content: "" },
           progressText: "就绪",
+          cloudSyncAt: null,
+          runtime: {
+            aiMode: "unknown",
+            aiProvider: "未检测",
+            hotspotMode: "unknown",
+            materialsMode: "unknown",
+            publishMode: "unknown",
+          },
         }),
     }),
     {
       name: "wewrite-pipeline",
       partialize: (state) => ({
-        // 只持久化非敏感数据
         article: state.article,
         selectedFramework: state.selectedFramework,
         selectedStrategy: state.selectedStrategy,
+        hotspots: state.hotspots,
+        selectedHotspots: state.selectedHotspots,
+        cloudSyncAt: state.cloudSyncAt,
       }),
     }
   )

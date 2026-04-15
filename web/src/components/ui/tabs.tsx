@@ -15,7 +15,7 @@ function Tabs({
     <TabsPrimitive.Root
       data-slot="tabs"
       data-orientation={orientation}
-      className={cn("group/tabs flex gap-2", className)}
+      className={cn("group/tabs", className)}
       {...props}
     />
   )
@@ -82,12 +82,18 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
         // Hover: shift toward foreground
         "hover:text-[rgba(0,0,0,0.8)] dark:hover:text-white/80",
         // Active/selected: white on pill bg, blue on line
+        "data-[active]:bg-white aria-selected:bg-white data-selected:bg-white",
+        "dark:data-[active]:bg-white/10 dark:aria-selected:bg-white/10 dark:data-selected:bg-white/10",
+        "data-[active]:text-[#1d1d1f] aria-selected:text-[#1d1d1f] data-selected:text-[#1d1d1f]",
+        "dark:data-[active]:text-white dark:aria-selected:text-white dark:data-selected:text-white",
         "data-selected:bg-white dark:data-selected:bg-white/10",
         "data-selected:text-[#1d1d1f] dark:data-selected:text-white",
         // Line variant: underline style
         "group-data-[variant=line]/tabs-list:bg-transparent",
+        "group-data-[variant=line]/tabs-list:data-[active]:text-[#0071e3] dark:group-data-[variant=line]/tabs-list:data-[active]:text-[#0071e3]",
+        "group-data-[variant=line]/tabs-list:aria-selected:text-[#0071e3] dark:group-data-[variant=line]/tabs-list:aria-selected:text-[#0071e3]",
         "group-data-[variant=line]/tabs-list:data-selected:text-[#0071e3] dark:group-data-[variant=line]/tabs-list:data-selected:text-[#0071e3]",
-        "group-data-[variant=line]/tabs-list:border-b-2 group-data-[variant=line]/tabs-list:data-selected:border-[#0071e3] group-data-[variant=line]/tabs-list:border-transparent group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:px-[14px]",
+        "group-data-[variant=line]/tabs-list:border-b-2 group-data-[variant=line]/tabs-list:data-[active]:border-[#0071e3] group-data-[variant=line]/tabs-list:aria-selected:border-[#0071e3] group-data-[variant=line]/tabs-list:data-selected:border-[#0071e3] group-data-[variant=line]/tabs-list:border-transparent group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:px-[14px]",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
@@ -102,7 +108,7 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
     <TabsPrimitive.Panel
       data-slot="tabs-content"
       className={cn(
-        "flex-1 text-[17px] leading-[1.47] tracking-[-0.374px] outline-none",
+        "w-full text-[17px] leading-[1.47] tracking-[-0.374px] outline-none",
         "mt-3",
         className
       )}

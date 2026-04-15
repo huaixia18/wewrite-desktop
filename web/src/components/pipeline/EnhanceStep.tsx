@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/http";
+import { StepStatusAlert } from "@/components/pipeline/StepStatusAlert";
+import { toast } from "sonner";
 import {
   ChevronRight,
   Search,
@@ -17,8 +16,7 @@ import {
   PlusCircle,
 } from "lucide-react";
 
-/* ─── Apple Step: Enhance ────────────────────────────────────────────────
- */
+/* ─── Apple Step: Enhance ──────────────────────────────────────────────── */
 export function EnhanceStep() {
   const {
     selectedTopic,
@@ -28,30 +26,53 @@ export function EnhanceStep() {
     setMaterials,
     nextStep,
     setProgressText,
+    markStepDone,
+    runMode,
+    setRuntime,
   } = usePipelineStore();
 
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+  const autoRanRef = useRef(false);
 
-  const fetchMaterials = async () => {
+  const fetchMaterials = useCallback(async () => {
     if (!selectedTopic?.keywords?.length) return;
+    setError("");
     setLoading(true);
     setProgressText("正在采集素材...");
     try {
-      const res = await fetch("/api/topics/materials", {
+      const data = await fetchJson<{
+        materials: Array<{ title: string; source: string; url: string }>;
+        meta?: { mode?: "live" | "mock" };
+      }>("/api/topics/materials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keywords: selectedTopic.keywords }),
       });
-      const data = await res.json();
       setMaterials(data.materials ?? []);
+      setRuntime({ materialsMode: data.meta?.mode ?? "unknown" });
       setProgressText(`采集了 ${data.materials?.length ?? 0} 条素材`);
+      if (data.meta?.mode === "mock") {
+        toast.info("当前素材采集为 Mock 数据，可先用于流程验证。");
+      }
     } catch {
+      setError("素材采集失败，请稍后重试。");
       setProgressText("素材采集失败");
+      toast.error("素材采集失败，请稍后重试");
     } finally {
       setLoading(false);
+      markStepDone();
     }
-  };
+  }, [markStepDone, selectedTopic?.keywords, setMaterials, setProgressText, setRuntime]);
+
+  // Auto-fetch materials in auto mode when entering this step
+  useEffect(() => {
+    if (runMode === "auto" && selectedTopic?.keywords?.length && !autoRanRef.current) {
+      autoRanRef.current = true;
+      void fetchMaterials();
+    }
+  }, [fetchMaterials, runMode, selectedTopic?.keywords]);
 
   const addManualMaterial = () => {
     if (!query.trim()) return;
@@ -72,6 +93,16 @@ export function EnhanceStep() {
       </div>
 
       {/* Topic summary */}
+      {error && (
+        <StepStatusAlert
+          variant="error"
+          title="素材采集失败"
+          description={error}
+          actionLabel="重试采集"
+          onAction={() => void fetchMaterials()}
+        />
+      )}
+
       <div className="bg-white rounded-2xl p-5 ring-1 ring-black/[0.06]">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">

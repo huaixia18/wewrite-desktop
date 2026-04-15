@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -114,9 +114,30 @@ export function FrameworkStep() {
     setStrategy,
     selectedTopic,
     nextStep,
+    markStepDone,
+    runMode,
   } = usePipelineStore();
 
   const [step, setStep] = useState<"framework" | "strategy">("framework");
+
+  // Auto-select recommended framework and strategy in auto mode
+  useEffect(() => {
+    if (runMode === "auto" && selectedTopic) {
+      if (!selectedFramework && selectedTopic.framework) {
+        setFramework(selectedTopic.framework);
+      }
+      if (!selectedStrategy) {
+        setStrategy("角度发现");
+      }
+    }
+  }, [runMode, selectedTopic, selectedFramework, selectedStrategy, setFramework, setStrategy]);
+
+  // Signal done when both framework and strategy are selected
+  useEffect(() => {
+    if (selectedFramework && selectedStrategy) {
+      markStepDone();
+    }
+  }, [selectedFramework, selectedStrategy, markStepDone]);
 
   const handleNext = () => {
     if (step === "framework") {

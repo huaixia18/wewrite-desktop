@@ -1,47 +1,33 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/http";
+import { StepStatusAlert } from "@/components/pipeline/StepStatusAlert";
+import { toast } from "sonner";
 import {
   TrendingUp,
   TrendingDown,
   Minus,
   RefreshCw,
-  Loader2,
   ChevronRight,
   Flame,
   TrendingUpIcon,
+  CheckCircle2,
+  Circle,
+  CheckCheck,
 } from "lucide-react";
 
-/* ─── Apple Step: Hotspot ────────────────────────────────────────────────
- * Light gray body (#f5f5f7) with white cards
- * Apple typography, clean metrics, blue CTAs
- */
-const platformLabels: Record<
-  string,
-  { label: string; color: string; bg: string }
-> = {
-  weibo: {
-    label: "微博",
-    color: "#ff8200",
-    bg: "bg-[#ff8200]/10",
-  },
-  toutiao: {
-    label: "头条",
-    color: "#ea0d11",
-    bg: "bg-[#ea0d11]/10",
-  },
-  baidu: {
-    label: "百度",
-    color: "#2932e1",
-    bg: "bg-[#2932e1]/10",
-  },
+/* ─── Apple Step: Hotspot ──────────────────────────────────────────────── */
+const platformLabels: Record<string, { label: string; color: string; bg: string }> = {
+  weibo: { label: "微博", color: "#ff8200", bg: "bg-[#ff8200]/10" },
+  toutiao: { label: "头条", color: "#ea0d11", bg: "bg-[#ea0d11]/10" },
+  baidu: { label: "百度", color: "#2932e1", bg: "bg-[#2932e1]/10" },
 };
 
 const trendConfig = {
@@ -53,80 +39,123 @@ const trendConfig = {
 export function HotspotStep() {
   const {
     hotspots,
+    selectedHotspots,
     hotspotsLoading,
     setHotspots,
     setHotspotsLoading,
     setProgressText,
     currentStep,
     nextStep,
+    markStepDone,
+    toggleHotspot,
+    selectAllHotspots,
+    clearSelectedHotspots,
+    setRuntime,
   } = usePipelineStore();
 
-  const fetchHotspots = async () => {
+  const allSelected = hotspots.length > 0 && selectedHotspots.length === hotspots.length;
+  const [error, setError] = useState("");
+
+  const fetchHotspots = useCallback(async () => {
     if (currentStep !== 1) return;
+    setError("");
     setHotspotsLoading(true);
     setProgressText("正在抓取热点...");
     try {
-      const res = await fetch("/api/topics/hotspots");
-      const data = await res.json();
-      setHotspots(data.hotspots ?? []);
+      const data = await fetchJson<{
+        hotspots: Array<{
+          id: string;
+          platform: "weibo" | "toutiao" | "baidu";
+          title: string;
+          score: number;
+          url?: string;
+          keywords: string[];
+          trend: "rising" | "stable" | "fading";
+        }>;
+        meta?: { mode?: "live" | "fallback" };
+      }>("/api/topics/hotspots");
+      setHotspots((data.hotspots ?? []).map((hotspot) => ({ ...hotspot, url: hotspot.url ?? "" })));
+      setRuntime({ hotspotMode: data.meta?.mode ?? "unknown" });
       setProgressText(`已抓取 ${data.hotspots?.length ?? 0} 条热点`);
+      if ((data.hotspots ?? []).length > 0) {
+        markStepDone();
+      }
+      if (data.meta?.mode === "fallback") {
+        toast.warning("热点服务暂不可用，已自动使用兜底数据");
+      }
     } catch {
       setHotspots([]);
+      setRuntime({ hotspotMode: "fallback" });
+      setError("热点抓取失败，可能是网络或热点源暂不可用。");
       setProgressText("热点抓取失败，请检查网络");
+      toast.error("热点抓取失败，请稍后重试");
     } finally {
       setHotspotsLoading(false);
     }
-  };
+  }, [currentStep, markStepDone, setHotspots, setHotspotsLoading, setProgressText, setRuntime]);
 
   useEffect(() => {
     if (currentStep === 1 && hotspots.length === 0 && !hotspotsLoading) {
-      fetchHotspots();
+      void fetchHotspots();
     }
-  }, [currentStep]);
+  }, [currentStep, fetchHotspots, hotspots.length, hotspotsLoading]);
 
-  const handleNext = () => nextStep();
+  // 缓存命中时也标记完成
+  useEffect(() => {
+    if (currentStep === 1 && hotspots.length > 0) {
+      markStepDone();
+    }
+  }, [currentStep, hotspots.length, markStepDone]);
+
+  const handleNext = () => {
+    if (selectedHotspots.length === 0) return;
+    nextStep();
+  };
 
   return (
     <div className="max-w-[880px] mx-auto px-8 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2
-            className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]"
-          >
+          <h2 className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]">
             热点抓取
           </h2>
-          <p
-            className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1"
-          >
-            实时聚合微博热搜、头条热榜、百度指数，筛选高潜力话题
+          <p className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
+            点击卡片选中热点，选中的热点将用于生成选题
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchHotspots}
-          disabled={hotspotsLoading}
-          className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px] shrink-0"
-        >
-          <RefreshCw
-            className={cn("h-4 w-4", hotspotsLoading && "animate-spin")}
-          />
-          刷新
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchHotspots}
+            disabled={hotspotsLoading}
+            className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px]"
+          >
+            <RefreshCw className={cn("h-4 w-4", hotspotsLoading && "animate-spin")} />
+            刷新
+          </Button>
+          {hotspots.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={allSelected ? clearSelectedHotspots : selectAllHotspots}
+              className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px]"
+            >
+              <CheckCheck className="h-4 w-4" />
+              {allSelected ? "取消全选" : "全选"}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Platform badges */}
+      {/* Platform badges + count */}
       <div className="flex items-center gap-2">
         {Object.entries(platformLabels).map(([key, val]) => (
           <Badge
             key={key}
             variant="outline"
-            className={cn(
-              "text-[12px] font-medium tracking-[-0.12px]",
-              "border-0",
-              val.bg
-            )}
+            className={cn("text-[12px] font-medium tracking-[-0.12px]", "border-0", val.bg)}
             style={{ color: val.color }}
           >
             {val.label}
@@ -136,16 +165,31 @@ export function HotspotStep() {
         <span className="text-[13px] text-[rgba(0,0,0,0.32)] tracking-[-0.224px]">
           共 {hotspots.length} 条
         </span>
+        {selectedHotspots.length > 0 && (
+          <>
+            <Separator orientation="vertical" className="h-4 mx-1" />
+            <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">
+              已选 {selectedHotspots.length} 条
+            </Badge>
+          </>
+        )}
       </div>
+
+      {error && (
+        <StepStatusAlert
+          variant="error"
+          title="热点抓取失败"
+          description={error}
+          actionLabel="重试抓取"
+          onAction={fetchHotspots}
+        />
+      )}
 
       {/* Loading skeleton */}
       {hotspotsLoading && (
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              className="h-[88px] rounded-2xl bg-white/60 animate-pulse"
-            />
+            <div key={i} className="h-[88px] rounded-2xl bg-white/60 animate-pulse" />
           ))}
         </div>
       )}
@@ -158,18 +202,31 @@ export function HotspotStep() {
             const trend = trendConfig[hotspot.trend];
             const TrendIcon = trend.icon;
             const isTop3 = index < 3;
+            const isSelected = selectedHotspots.some((h) => h.id === hotspot.id);
 
             return (
               <div
                 key={hotspot.id}
+                onClick={() => toggleHotspot(hotspot)}
                 className={cn(
-                  "bg-white rounded-2xl p-5",
-                  "border-l-4 transition-all duration-200",
-                  "hover:shadow-[rgba(0,0,0,0.08)_0_2px_12px_0px]",
-                  isTop3 ? "border-l-[#ff9500]" : "border-l-transparent"
+                  "bg-white rounded-2xl p-5 cursor-pointer transition-all duration-200",
+                  "border-l-4",
+                  isSelected
+                    ? "ring-2 ring-[#0071e3] border-l-[#0071e3]"
+                    : "ring-1 ring-black/[0.06] hover:ring-[#0071e3]/40",
+                  isTop3 && !isSelected ? "border-l-[#ff9500]" : ""
                 )}
               >
                 <div className="flex items-start gap-4">
+                  {/* Selection toggle */}
+                  <div className="flex items-center justify-center w-6 h-6 shrink-0 mt-0.5">
+                    {isSelected ? (
+                      <CheckCircle2 className="h-6 w-6 text-[#0071e3]" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-[rgba(0,0,0,0.24)]" />
+                    )}
+                  </div>
+
                   {/* Rank */}
                   <div
                     className={cn(
@@ -194,10 +251,7 @@ export function HotspotStep() {
                         {platform.label}
                       </Badge>
                       {isTop3 && (
-                        <Badge
-                          variant="outline"
-                          className="text-[11px] font-medium tracking-[-0.12px] border-0 bg-[#ff3b30]/10 text-[#ff3b30]"
-                        >
+                        <Badge className="text-[11px] font-medium tracking-[-0.12px] border-0 bg-[#ff3b30]/10 text-[#ff3b30]">
                           <Flame className="h-2.5 w-2.5 mr-0.5" />
                           TOP
                         </Badge>
@@ -211,10 +265,7 @@ export function HotspotStep() {
                       </span>
                       {/* Score bar */}
                       <div className="ml-auto flex items-center gap-2">
-                        <Progress
-                          value={hotspot.score}
-                          className="w-[80px] h-[3px]"
-                        />
+                        <Progress value={hotspot.score} className="w-[80px] h-[3px]" />
                         <span className="text-[12px] font-mono text-[rgba(0,0,0,0.32)] w-5 text-right">
                           {hotspot.score}
                         </span>
@@ -222,9 +273,7 @@ export function HotspotStep() {
                     </div>
 
                     {/* Title */}
-                    <p
-                      className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] text-[#1d1d1f]"
-                    >
+                    <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] text-[#1d1d1f]">
                       {hotspot.title}
                     </p>
 
@@ -266,7 +315,7 @@ export function HotspotStep() {
       )}
 
       {/* CTA */}
-      {hotspots.length > 0 && (
+      {selectedHotspots.length > 0 && (
         <div className="flex justify-end pt-2">
           <Button
             variant="pill-filled"
@@ -274,7 +323,7 @@ export function HotspotStep() {
             className="gap-1.5 h-10 px-5"
             onClick={handleNext}
           >
-            去选题
+            生成选题（{selectedHotspots.length} 条）
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

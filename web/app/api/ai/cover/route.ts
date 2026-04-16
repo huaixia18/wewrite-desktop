@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { createAIClient, type AIProvider } from "@/lib/ai";
+import { createAIClient } from "@/lib/ai";
+import { isProviderConfigured, normalizeProvider, resolveUserModelForTier } from "@/lib/ai-models";
+import { resolveSubscriptionTier } from "@/lib/subscription";
 
 // ─── 封面图 Prompt ────────────────────────────────────────────────────────
 
@@ -30,35 +32,36 @@ function buildCoverPrompt(title: string, content: string): string {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { title, content } = await req.json();
 
   const userConfig = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { aiProvider: true },
+    select: {
+      aiProvider: true,
+      model: true,
+      subscriptionTier: true,
+      subscriptionStatus: true,
+      subscriptionEndsAt: true,
+    },
   });
 
-  const aiProvider = userConfig?.aiProvider === "openai" ? "openai" : "anthropic";
+  const aiProvider = normalizeProvider(userConfig?.aiProvider);
+  const tier = resolveSubscriptionTier(userConfig);
+  const model = resolveUserModelForTier(aiProvider, userConfig?.model, tier);
 
-  const apiKeyOrEnv =
-    process.env[`${aiProvider.toUpperCase()}_API_KEY`] ||
-    "";
-
-  if (!apiKeyOrEnv || apiKeyOrEnv.includes("placeholder")) {
-    // Mock fallback: 返回 Unsplash 占位图
-    const imageUrl = `https://picsum.photos/seed/${encodeURIComponent(title ?? "wewrite")}/900/506`;
-    return NextResponse.json({
-      imageUrl,
-      prompt: `微信公众号封面图，主题：${title}，风格：简约大气，现代感，扁平插画风格，暖色调`,
-      meta: { mode: "mock", provider: "mock" },
-    });
+  if (!isProviderConfigured(aiProvider)) {
+    return NextResponse.json(
+      { error: "AI 服务未配置，请先在服务端配置有效的网关 Key。" },
+      { status: 503 }
+    );
   }
 
   try {
-    const client = createAIClient(aiProvider as AIProvider);
+    const client = createAIClient(aiProvider);
     const prompt = await client.chat({
-      model: aiProvider === "anthropic" ? "claude-sonnet-4-7-20250514" : "gpt-4o",
+      model,
       messages: [
         { role: "system", content: "你是一个创意视觉提示词专家。" },
         { role: "user", content: buildCoverPrompt(title, content) },
@@ -67,41 +70,65 @@ export async function POST(req: NextRequest) {
       temperature: 0.8,
     });
 
-    // 如果配置了绘图 API Key，调用绘图；否则返回 prompt 由前端处理
+    // 生成提示词后，调用绘图服务
     const imageGenKey =
       process.env.IMAGE_GEN_API_KEY ??
+      process.env.AI_GATEWAY_API_KEY ??
       process.env.OPENAI_API_KEY;
     const imageBaseUrl =
       process.env.IMAGE_GEN_BASE_URL ??
+      process.env.AI_GATEWAY_BASE_URL ??
       process.env.OPENAI_BASE_URL;
 
-    let imageUrl = "";
-
-    if (imageGenKey && imageBaseUrl) {
-      // 调用绘图 API（OpenAI DALL-E 3 / 代理兼容）
-      const imageRes = await fetch(`${imageBaseUrl}/v1/images/generations`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${imageGenKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "dall-e-3",
+    if (!imageGenKey || !imageBaseUrl) {
+      return NextResponse.json(
+        {
+          error: "未配置绘图服务，请设置 IMAGE_GEN_API_KEY / IMAGE_GEN_BASE_URL 或统一网关变量。",
           prompt,
-          n: 1,
-          size: "1792x1024",
-        }),
-      });
-
-      if (imageRes.ok) {
-        const imageData = await imageRes.json();
-        imageUrl = imageData.data?.[0]?.url ?? "";
-      }
+          meta: { mode: "live", provider: aiProvider },
+        },
+        { status: 503 }
+      );
     }
 
-    // 如果绘图失败或未配置，返回占位图
+    const imageRes = await fetch(`${imageBaseUrl}/v1/images/generations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${imageGenKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "dall-e-3",
+        prompt,
+        n: 1,
+        size: "1792x1024",
+      }),
+    });
+
+    if (!imageRes.ok) {
+      const detail = await imageRes.text();
+      return NextResponse.json(
+        {
+          error: `封面图生成失败（${imageRes.status}）`,
+          detail,
+          prompt,
+          meta: { mode: "live", provider: aiProvider },
+        },
+        { status: 502 }
+      );
+    }
+
+    const imageData = await imageRes.json();
+    const imageUrl = imageData.data?.[0]?.url ?? "";
     if (!imageUrl) {
-      imageUrl = `https://picsum.photos/seed/${encodeURIComponent(title ?? "wewrite")}/900/506`;
+      return NextResponse.json(
+        {
+          error: "绘图服务未返回可用图片 URL",
+          prompt,
+          meta: { mode: "live", provider: aiProvider },
+        },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({

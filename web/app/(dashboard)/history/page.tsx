@@ -14,6 +14,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchJson } from "@/lib/http";
+import { StepStatusAlert } from "@/components/pipeline/StepStatusAlert";
 
 interface Article {
   id: string;
@@ -27,25 +29,35 @@ interface Article {
   updatedAt: string;
 }
 
+interface ArticleListResponse {
+  articles?: Article[];
+}
+
 const statusMap: Record<string, string> = {
   draft: "草稿",
   published: "已发布",
   archived: "归档",
 };
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function HistoryPage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [activeTab, setActiveTab] = useState("draft");
 
   const fetchArticles = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
-      const res = await fetch(`/api/articles?status=${activeTab}`);
-      const data = await res.json();
+      const data = await fetchJson<ArticleListResponse>(`/api/articles?status=${activeTab}`);
       setArticles(data.articles ?? []);
-    } catch {
+    } catch (err) {
       setArticles([]);
+      setLoadError(getErrorMessage(err, "文章列表加载失败"));
     } finally {
       setLoading(false);
     }
@@ -120,14 +132,20 @@ export default function HistoryPage() {
         <div className="apple-container px-0">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <TabsList variant="default" className="w-fit bg-[#e9e9ee] p-1">
-                <TabsTrigger value="draft">草稿</TabsTrigger>
-                <TabsTrigger value="published">已发布</TabsTrigger>
-                <TabsTrigger value="archived">归档</TabsTrigger>
-              </TabsList>
+              <div className="w-full overflow-x-auto lg:w-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <TabsList variant="default" className="w-max bg-[#e9e9ee] p-1">
+                  <TabsTrigger value="draft" className="shrink-0">草稿</TabsTrigger>
+                  <TabsTrigger value="published" className="shrink-0">已发布</TabsTrigger>
+                  <TabsTrigger value="archived" className="shrink-0">归档</TabsTrigger>
+                </TabsList>
+              </div>
 
               <p className="text-[14px] tracking-[-0.224px] text-[rgba(0,0,0,0.48)]">
-                {loading ? "正在整理文章列表..." : `共整理出 ${articles.length} 篇文章`}
+                {loading
+                  ? "正在整理文章列表..."
+                  : loadError
+                  ? "列表加载失败"
+                  : `共整理出 ${articles.length} 篇文章`}
               </p>
             </div>
 
@@ -138,7 +156,21 @@ export default function HistoryPage() {
                 </div>
               )}
 
-              {!loading && articles.length === 0 && (
+              {!loading && loadError && (
+                <div className="apple-panel flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
+                  <div className="w-full max-w-[480px]">
+                    <StepStatusAlert
+                      variant="error"
+                      title="读取失败"
+                      description={loadError}
+                      actionLabel="重新加载"
+                      onAction={() => void fetchArticles()}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!loading && !loadError && articles.length === 0 && (
                 <div className="apple-panel flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f5f5f7]">
                     <FileText className="h-7 w-7 text-[rgba(0,0,0,0.2)]" />
@@ -158,7 +190,7 @@ export default function HistoryPage() {
                 </div>
               )}
 
-              {!loading && articles.length > 0 && (
+              {!loading && !loadError && articles.length > 0 && (
                 <div className="space-y-4">
                   {articles.map((article) => (
                     <Card

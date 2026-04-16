@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="0d48ef91-5364-48ec-aa0c-14b5dd402c1f" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/web/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/web/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/web/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/web/Dockerfile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/(dashboard)/history/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/(dashboard)/history/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/(dashboard)/layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/(dashboard)/layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/(dashboard)/settings/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/(dashboard)/settings/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/(dashboard)/write/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/(dashboard)/write/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/ai/cover/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/ai/cover/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/ai/seo/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/ai/seo/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/ai/test/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/ai/test/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/ai/write/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/ai/write/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/articles/preview/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/articles/preview/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/articles/publish/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/articles/publish/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/articles/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/articles/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/settings/ai/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/settings/ai/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/subscriptions/status/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/subscriptions/status/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/topics/generate/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/topics/generate/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/topics/hotspots/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/topics/hotspots/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/api/topics/materials/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/api/topics/materials/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/globals.css" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/globals.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/docker-compose.dev.yml" beforeDir="false" afterPath="$PROJECT_DIR$/web/docker-compose.dev.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/web/docker-compose.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/eslint.config.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/web/eslint.config.mjs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/web/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/web/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/auth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/FeatureGate.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/FeatureGate.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/layout/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/layout/Sidebar.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/layout/WorkspaceTopbar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/layout/WorkspaceTopbar.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/EnhanceStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/EnhanceStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/FrameworkStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/FrameworkStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/HotspotStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/HotspotStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/HumanizerStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/HumanizerStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/PublishStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/PublishStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/SeoImageStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/SeoImageStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/StepStatusAlert.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/StepStatusAlert.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/TopicStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/TopicStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/components/pipeline/WritingStep.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/components/pipeline/WritingStep.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/lib/ai.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/lib/ai.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/lib/subscription.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/lib/subscription.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/web/src/store/pipeline.ts" beforeDir="false" afterPath="$PROJECT_DIR$/web/src/store/pipeline.ts" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="master" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="ROOT_SYNC" value="DONT_SYNC" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;huaixia18&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:huaixia18/wewrite-desktop.git&quot;,
+    &quot;accountId&quot;: &quot;3eeaa76a-9d11-4c0a-a04f-1aee67054d2f&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2
+}</component>
+  <component name="ProjectId" id="3C4V0FjA6fw4LyjIICPJcniGfWQ" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feat/web-cloud&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/huaixia/Desktop/project/AI公众号&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;project.propVCSSupport.DirectoryMappings&quot;,
+    &quot;show.migrate.to.gradle.popup&quot;: &quot;false&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-2fc7cc6b9a17-intellij.indexing.shared.core-IU-253.30387.90" />
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-IU-253.30387.90" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="0d48ef91-5364-48ec-aa0c-14b5dd402c1f" name="更改" comment="" />
+      <created>1775644604888</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1775644604888</updated>
+      <workItem from="1775644606058" duration="673000" />
+      <workItem from="1775646117145" duration="183000" />
+      <workItem from="1775712170201" duration="190000" />
+      <workItem from="1775712375878" duration="1038000" />
+      <workItem from="1775811615003" duration="695000" />
+      <workItem from="1776057901438" duration="120000" />
+      <workItem from="1776058049413" duration="113000" />
+      <workItem from="1776058189328" duration="358000" />
+      <workItem from="1776058619774" duration="10000" />
+      <workItem from="1776058773898" duration="5000" />
+      <workItem from="1776058800592" duration="377000" />
+      <workItem from="1776059219894" duration="3275000" />
+      <workItem from="1776064124495" duration="4312000" />
+      <workItem from="1776223866964" duration="914000" />
+      <workItem from="1776320568702" duration="7000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <ignored-roots>
+      <path value="$PROJECT_DIR$/wewrite-desktop" />
+      <path value="$PROJECT_DIR$/wewrite-desktop/web" />
+    </ignored-roots>
+  </component>
+</project>

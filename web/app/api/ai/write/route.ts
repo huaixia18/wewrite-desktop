@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { createAIClient, toSSEStream, Message, type AIProvider } from "@/lib/ai";
+import { createAIClient, toSSEStream, Message } from "@/lib/ai";
+import { isProviderConfigured, normalizeProvider, resolveUserModelForTier } from "@/lib/ai-models";
+import { resolveSubscriptionTier } from "@/lib/subscription";
 
 // ─── System Prompt ────────────────────────────────────────────────────────
 
@@ -17,17 +19,55 @@ const WRITING_SYSTEM_PROMPT = `你是一个微信公众号资深编辑，擅长�
 7. 禁止使用：首先/其次/总之/作为一个/让我们
 8. 插入 <!-- ✏️编辑建议 --> 提示编辑加个人经历
 9. 结尾留开放性问题，不给通用正面结尾
+10. 必须紧扣用户给定“选题”，禁止换题、跑题或改写为其他事件
+11. 禁止编造具体事实（人名、机构、时间、地点、数字）；不确定的信息标注“【待核实】”
+12. 若素材不足，宁可减少事实断言，也不要杜撰细节
 
 框架参考：痛点型/故事型/清单型/对比型/热点解读型/纯观点型/复盘型`;
+
+const PERSONA_PROMPTS: Record<string, string> = {
+  "midnight-friend":
+    "写作口吻像深夜和朋友聊天，第一人称，真诚克制，不端着。",
+  "warm-editor":
+    "写作口吻温暖、叙事感强，先讲人再讲观点，数据作为支撑。",
+  "industry-observer":
+    "写作口吻中性客观，强调数据、趋势和可验证论据，避免情绪化判断。",
+  "sharp-journalist":
+    "写作口吻犀利但有证据，观点明确，反问和对比适度，不煽动。",
+  "cold-analyst":
+    "写作口吻冷静克制，逻辑严密，减少修辞，优先结构化表达。",
+};
+
+type WritingContext = {
+  persona: string;
+  humanizerStrict: string;
+  playbooks: Array<{ rule: string; confidence: number; source: string | null }>;
+  exemplars: Array<{
+    title: string;
+    category: string | null;
+    sourceAccount: string | null;
+    openingHook: string | null;
+    content: string;
+  }>;
+};
 
 function buildMessages(params: {
   topic: { title: string; keywords: string[] };
   framework: string;
   strategy: string;
   materials: Array<{ title: string; source: string }>;
+  context: WritingContext;
 }): Message[] {
+  const personaPrompt =
+    PERSONA_PROMPTS[params.context.persona] ??
+    "写作口吻保持自然口语化，避免模板腔和空话。";
   const parts: string[] = [
     WRITING_SYSTEM_PROMPT,
+    "",
+    "## 人设与风格",
+    `- Persona：${params.context.persona}`,
+    `- 风格要求：${personaPrompt}`,
+    `- Humanizer 强度：${params.context.humanizerStrict}`,
     "",
     "## 写作任务",
     `- 选题：${params.topic.title}`,
@@ -44,7 +84,39 @@ function buildMessages(params: {
     );
   }
 
+  if (params.context.playbooks.length > 0) {
+    parts.push(
+      "",
+      "## 个人 Playbook（优先遵守）",
+      ...params.context.playbooks.map(
+        (item) =>
+          `- ${item.rule}（置信度 ${item.confidence}/10${item.source ? `，来源：${item.source}` : ""}）`
+      )
+    );
+  }
+
+  if (params.context.exemplars.length > 0) {
+    parts.push(
+      "",
+      "## 范文参照（只学写法，不抄内容）",
+      ...params.context.exemplars.map((item, index) => {
+        const opening = item.openingHook?.trim()
+          ? item.openingHook.trim()
+          : item.content.replace(/\s+/g, " ").slice(0, 80);
+        return `${index + 1}. 《${item.title}》${item.category ? ` [${item.category}]` : ""}${
+          item.sourceAccount ? `（来源账号：${item.sourceAccount}）` : ""
+        }\n   - 可借鉴开头：${opening}`;
+      })
+    );
+  }
+
   parts.push(
+    "",
+    "## 硬约束（必须满足）",
+    `- 全文只讨论该选题：${params.topic.title}`,
+    "- H1 标题必须与选题高度一致（可微调但不能改变事件主体）",
+    "- 严禁出现与该选题无关的示例/案例",
+    "- 若素材与选题冲突，以选题为准并明确标注“【待核实】”",
     "",
     "请生成完整的 Markdown 文章，包含：",
     "1. H1 标题（直接输出一级标题）",
@@ -64,38 +136,89 @@ function buildMessages(params: {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session) {
+  if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const { topic, framework, strategy, materials } =
-    await req.json();
+  const { topic, framework, strategy, materials } = await req.json();
+  if (!topic?.title || !Array.isArray(topic?.keywords) || !framework || !strategy) {
+    return new Response("写作参数不完整，请先完成选题与框架步骤。", { status: 400 });
+  }
 
   // 平台托管模式：用户仅可选择 provider，key 与 baseUrl 全部走服务端环境变量
-  const userConfig = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { aiProvider: true },
-  });
+  const [userConfig, playbooks, exemplars] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        aiProvider: true,
+        model: true,
+        styleConfig: true,
+        subscriptionTier: true,
+        subscriptionStatus: true,
+        subscriptionEndsAt: true,
+      },
+    }),
+    prisma.playbook.findMany({
+      where: { userId: session.user.id },
+      orderBy: [{ confidence: "desc" }, { createdAt: "desc" }],
+      take: 8,
+      select: {
+        rule: true,
+        confidence: true,
+        source: true,
+      },
+    }),
+    prisma.exemplar.findMany({
+      where: { userId: session.user.id },
+      orderBy: { addedAt: "desc" },
+      take: 3,
+      select: {
+        title: true,
+        category: true,
+        sourceAccount: true,
+        openingHook: true,
+        content: true,
+      },
+    }),
+  ]);
 
-  const aiProvider = userConfig?.aiProvider === "openai" ? "openai" : "anthropic";
+  const aiProvider = normalizeProvider(userConfig?.aiProvider);
+  const tier = resolveSubscriptionTier(userConfig);
+  const model = resolveUserModelForTier(aiProvider, userConfig?.model, tier);
+  const styleConfig = (userConfig?.styleConfig ?? {}) as Record<string, unknown>;
+  const persona =
+    typeof styleConfig.persona === "string" && styleConfig.persona.trim()
+      ? styleConfig.persona.trim()
+      : "midnight-friend";
+  const humanizerStrict =
+    typeof styleConfig.humanizerStrict === "string" && styleConfig.humanizerStrict.trim()
+      ? styleConfig.humanizerStrict.trim()
+      : "standard";
 
-  const apiKeyOrEnv =
-    process.env[`${aiProvider.toUpperCase()}_API_KEY`] ||
-    "";
-
-  // 如果没有配置 Key，回退到模拟输出
-  if (!apiKeyOrEnv || apiKeyOrEnv.includes("placeholder")) {
-    return mockStreamResponse({ topic, framework, strategy });
+  if (!isProviderConfigured(aiProvider)) {
+    return new Response("AI 服务未配置，请先在服务端配置有效的网关 Key。", { status: 503 });
   }
 
   try {
-    const client = createAIClient(aiProvider as AIProvider);
-    const messages = buildMessages({ topic, framework, strategy, materials });
+    const client = createAIClient(aiProvider);
+    const messages = buildMessages({
+      topic,
+      framework,
+      strategy,
+      materials,
+      context: {
+        persona,
+        humanizerStrict,
+        playbooks,
+        exemplars,
+      },
+    });
 
     const generator = client.streamChat({
+      model,
       messages,
       maxTokens: 8192,
-      temperature: 0.7,
+      temperature: 0.35,
       stream: true,
     });
 
@@ -105,67 +228,18 @@ export async function POST(req: NextRequest) {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-AI-Provider": aiProvider,
+        "X-AI-Model": model,
         "X-AI-Mode": "live",
       },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
-      `data: ${JSON.stringify({ type: "error", text: message })}\n`,
+      `data: ${JSON.stringify({ type: "error", text: message })}\n\n`,
       {
         status: 500,
         headers: { "Content-Type": "text/event-stream" },
       }
     );
   }
-}
-
-// ─── Mock Fallback ────────────────────────────────────────────────────────
-
-function mockStreamResponse(params: {
-  topic: { title: string };
-  framework: string;
-  strategy: string;
-}) {
-  const encoder = new TextEncoder();
-
-  const mockContent = `# ${params.topic.title || "AI 时代，我们如何保住自己的写作能力"}\n\n` +
-    `## 一、问题的本质：我们正在被 AI 批量替代\n\n` +
-    `写代码的，做设计的，现在连写文章的也要被替代了。但这件事的本质，比很多人想象的要复杂。\n\n` +
-    `很多人说 AI 写的东西没有灵魂，这话对了一半。AI 写的东西确实没有"你的"灵魂，但它有**足够的**灵魂——足以让大多数读者感受不到明显差异。\n\n` +
-    `问题不在于 AI 能不能写。问题在于，当 AI 能写的时候，**人为什么还要写**。\n\n` +
-    `<!-- ✏️编辑建议：在这里加一个你自己的故事 -->\n\n` +
-    `## 二、三个选择，三种命运\n\n` +
-    `第一类：全面拥抱 AI 的效率派。什么工具出来就用什么，产出效率提高了 3-5 倍。\n\n` +
-    `第二类：视 AI 为洪水猛兽的坚守派。只用 AI 搜集资料，文字必须自己写。\n\n` +
-    `第三类：把 AI 当放大器的聪明人。他们用 AI 处理机械性的写作，省下来的时间花在真正的思考上。\n\n` +
-    `## 三、开放性问题\n\n` +
-    `你呢？你怎么看待 AI 和写作的关系？欢迎留言告诉我。`;
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const lines = mockContent.split("\n");
-      for (const line of lines) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "content", text: line + "\n" })}\n`
-          )
-        );
-        await new Promise((r) => setTimeout(r, 20 + Math.random() * 30));
-      }
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n`));
-      controller.enqueue(encoder.encode("data: [DONE]\n"));
-      controller.close();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "X-AI-Provider": "mock",
-      "X-AI-Mode": "mock",
-    },
-  });
 }

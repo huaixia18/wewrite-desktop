@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -64,9 +66,19 @@ const layerConfig: Record<string, { color: string; bg: string; border: string; l
 };
 
 export function HumanizerStep() {
-  const { article, setArticle, nextStep, markStepDone, setProgressText } = usePipelineStore();
+  const {
+    article,
+    setArticle,
+    nextStep,
+    markStepDone,
+    setProgressText,
+    runtime,
+    setRuntime,
+  } = usePipelineStore();
   const [autoMode, setAutoMode] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [seoLoading, setSeoLoading] = useState(false);
   const [fixed, setFixed] = useState(false);
   const [error, setError] = useState("");
   const [report, setReport] = useState<{
@@ -74,6 +86,90 @@ export function HumanizerStep() {
     score: number;
     layers: Record<string, number>;
   } | null>(null);
+  const [validation, setValidation] = useState<{
+    compositeScore: number;
+    qualityReport?: {
+      dimensions?: Record<string, { score: number; detail: string }>;
+      checks?: Array<{ key: string; passed: boolean; message: string }>;
+    };
+  } | null>(null);
+
+  const runValidation = async (contentForValidation?: string, scoreForValidation?: number) => {
+    const content = contentForValidation ?? article.content;
+    if (!content?.trim()) return;
+    setValidating(true);
+    try {
+      const data = await fetchJson<{
+        compositeScore: number;
+        qualityReport: {
+          dimensions?: Record<string, { score: number; detail: string }>;
+          checks?: Array<{ key: string; passed: boolean; message: string }>;
+        };
+      }>("/api/articles/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          articleId: article.id,
+          title: article.title,
+          content,
+          seoTitle: article.seoTitle,
+          seoAbstract: article.seoAbstract,
+          seoTags: article.seoTags ?? [],
+          keywords: article.keywords ?? article.topic?.keywords ?? [],
+          humanizerScore: scoreForValidation ?? report?.score ?? article.humanizerReport?.score ?? 70,
+        }),
+      });
+      setValidation(data);
+      setArticle({
+        compositeScore: data.compositeScore,
+      });
+      setProgressText(`验证完成，综合分 ${data.compositeScore}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "质量验证失败";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const runSEO = async () => {
+    if (!article.content?.trim()) return;
+    setError("");
+    setSeoLoading(true);
+    setProgressText("正在生成 SEO 元数据...");
+    try {
+      const data = await fetchJson<{
+        seoTitle: string;
+        abstract: string;
+        tags: string[];
+        meta?: { mode?: "live"; provider?: string };
+      }>("/api/ai/seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: article.title,
+          content: article.content,
+        }),
+      });
+      setArticle({
+        seoTitle: data.seoTitle,
+        seoAbstract: data.abstract,
+        seoTags: data.tags,
+      });
+      setRuntime({
+        aiMode: data.meta?.mode ?? runtime.aiMode,
+        aiProvider: data.meta?.provider ?? runtime.aiProvider,
+      });
+      setProgressText("SEO 生成完成");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "SEO 生成失败";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSeoLoading(false);
+    }
+  };
 
   const runHumanizer = async () => {
     if (!article.content) return;
@@ -99,11 +195,27 @@ export function HumanizerStep() {
       });
 
       setReport(data.report);
-      setArticle({ humanizerReport: data.report as never });
+      setArticle({
+        humanizerReport: {
+          hits: [],
+          fixes: data.report.fixes ?? data.report.hits.reduce((sum, hit) => sum + hit.count, 0),
+          score: data.report.score,
+          layers: {
+            content: data.report.layers.content ?? 0,
+            language: data.report.layers.language ?? 0,
+            style: data.report.layers.style ?? 0,
+            communication: data.report.layers.communication ?? 0,
+            filler: data.report.layers.filler ?? 0,
+          },
+        },
+      });
 
       if (autoMode && data.fixed) {
         setArticle({ content: data.fixed });
         setFixed(true);
+        await runValidation(data.fixed, data.report.score);
+      } else {
+        await runValidation(article.content, data.report.score);
       }
       setProgressText("去 AI 化完成");
     } catch (err) {
@@ -117,8 +229,10 @@ export function HumanizerStep() {
   };
 
   useEffect(() => {
-    if (report) markStepDone();
-  }, [report, markStepDone]);
+    if (report && validation && article.seoTitle?.trim() && article.seoAbstract?.trim()) {
+      markStepDone();
+    }
+  }, [article.seoAbstract, article.seoTitle, markStepDone, report, validation]);
 
   const stats = report
     ? {
@@ -135,10 +249,10 @@ export function HumanizerStep() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]">
-            去 AI 化
+            SEO + 验证
           </h2>
           <p className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
-            基于 29 种 AI 写作痕迹规则，扫描并修复文章中的 AI 味
+            先做 Humanizer 扫描，再执行质量验证并产出 composite_score
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -197,6 +311,85 @@ export function HumanizerStep() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-black/[0.06] bg-white p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-[14px] font-semibold text-[#1d1d1f]">SEO 元数据</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void runSEO()}
+            disabled={seoLoading || !article.content}
+            className="h-8 gap-1.5 text-[12px] border-[rgba(0,0,0,0.08)]"
+          >
+            {seoLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />}
+            AI 生成 SEO
+          </Button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-[12px] text-[rgba(0,0,0,0.48)]">SEO 标题</Label>
+            <Input
+              value={article.seoTitle ?? ""}
+              onChange={(e) => setArticle({ seoTitle: e.target.value })}
+              placeholder="20-28 字推荐标题"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[12px] text-[rgba(0,0,0,0.48)]">SEO 摘要</Label>
+            <Input
+              value={article.seoAbstract ?? ""}
+              onChange={(e) => setArticle({ seoAbstract: e.target.value })}
+              placeholder="40 字以内摘要"
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[12px] text-[rgba(0,0,0,0.48)]">SEO 标签（逗号分隔）</Label>
+          <Input
+            value={(article.seoTags ?? []).join("，")}
+            onChange={(e) => {
+              const tags = e.target.value
+                .split(/[，,]/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+                .slice(0, 8);
+              setArticle({ seoTags: tags });
+            }}
+            placeholder="例如：AI写作，公众号运营，内容策略"
+          />
+        </div>
+      </div>
+
+      {validation && (
+        <div className="rounded-2xl border border-black/[0.06] bg-white p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[14px] font-semibold text-[#1d1d1f]">质量验证结果</p>
+            <Badge className="bg-[#0071e3]/10 text-[#0071e3] border-0">
+              composite_score {validation.compositeScore}
+            </Badge>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {Object.entries(validation.qualityReport?.dimensions ?? {}).map(([key, value]) => (
+              <div key={key} className="rounded-xl border border-black/[0.06] bg-[#f8fafc] p-3">
+                <p className="text-[12px] text-[rgba(0,0,0,0.42)]">{key}</p>
+                <p className="mt-1 text-[16px] font-semibold text-[#1d1d1f]">{value.score}</p>
+                <p className="mt-1 text-[12px] text-[rgba(0,0,0,0.48)]">{value.detail}</p>
+              </div>
+            ))}
+          </div>
+          {(validation.qualityReport?.checks ?? []).length > 0 && (
+            <div className="space-y-1.5">
+              {(validation.qualityReport?.checks ?? []).map((item) => (
+                <div key={item.key} className="text-[12px] text-[rgba(0,0,0,0.52)]">
+                  {item.passed ? "✓" : "•"} {item.message}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -339,22 +532,40 @@ export function HumanizerStep() {
 
       {/* Navigation */}
       <div className="flex items-center justify-between pt-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={runHumanizer}
-          className="h-9 gap-1.5 text-[14px] border-[rgba(0,0,0,0.08)]"
-        >
-          <RotateCcw className="h-4 w-4" />
-          重新扫描
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runHumanizer}
+            className="h-9 gap-1.5 text-[14px] border-[rgba(0,0,0,0.08)]"
+          >
+            <RotateCcw className="h-4 w-4" />
+            重新扫描
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void runValidation()}
+            disabled={validating || !article.content}
+            className="h-9 gap-1.5 text-[14px] border-[rgba(0,0,0,0.08)]"
+          >
+            {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+            运行验证
+          </Button>
+        </div>
         <Button
           variant="pill-filled"
           size="pill-sm"
           className="gap-1.5 h-10 px-5"
           onClick={nextStep}
+          disabled={
+            !report ||
+            !validation ||
+            !article.seoTitle?.trim() ||
+            !article.seoAbstract?.trim()
+          }
         >
-          SEO + 配图
+          视觉 AI
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

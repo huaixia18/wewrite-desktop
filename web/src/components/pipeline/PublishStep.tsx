@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +14,11 @@ import {
   Copy,
   CheckCircle2,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 
 /* ─── Apple Step: Publish ───────────────────────────────────────────────
- * Theme picker + phone mockup preview + WeChat publish
+ * Theme picker + phone preview + WeChat publish
  */
 const THEMES = [
   { id: "professional-clean", name: "专业简洁", emoji: "📄", category: "通用" },
@@ -35,7 +36,15 @@ const THEMES = [
 ];
 
 export function PublishStep() {
-  const { article, setArticle, resetPipeline, setRuntime, runtime, setProgressText } = usePipelineStore();
+  const {
+    article,
+    setArticle,
+    resetPipeline,
+    setRuntime,
+    runtime,
+    setProgressText,
+    markStepDone,
+  } = usePipelineStore();
   const [selectedTheme, setSelectedTheme] = useState("professional-clean");
   const [previewHtml, setPreviewHtml] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,7 +52,51 @@ export function PublishStep() {
   const [published, setPublished] = useState(false);
   const [error, setError] = useState("");
   const [publishMessage, setPublishMessage] = useState("");
-  const [isBetaPublish, setIsBetaPublish] = useState(false);
+  const [precheckLoading, setPrecheckLoading] = useState(false);
+  const [precheck, setPrecheck] = useState<{
+    ok: boolean;
+    summary: { passed: number; warned: number; failed: number };
+    checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; message: string }>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (previewHtml.trim() || published) {
+      markStepDone();
+    }
+  }, [markStepDone, previewHtml, published]);
+
+  const runPrecheck = async (overridePreview?: string) => {
+    setPrecheckLoading(true);
+    try {
+      const data = await fetchJson<{
+        ok: boolean;
+        summary: { passed: number; warned: number; failed: number };
+        checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; message: string }>;
+      }>("/api/articles/precheck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: article.seoTitle || article.title,
+          content: article.content,
+          seoTitle: article.seoTitle,
+          seoAbstract: article.seoAbstract,
+          seoTags: article.seoTags ?? [],
+          coverImageUrl: article.coverImageUrl,
+          previewHtml: overridePreview ?? previewHtml,
+          compositeScore: article.compositeScore,
+        }),
+      });
+      setPrecheck(data);
+      return data.ok;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "发布预检失败";
+      setError(message);
+      toast.error(message);
+      return false;
+    } finally {
+      setPrecheckLoading(false);
+    }
+  };
 
   const generatePreview = async () => {
     setError("");
@@ -61,6 +114,7 @@ export function PublishStep() {
       });
       setPreviewHtml(data.html);
       setProgressText("预览生成完成");
+      await runPrecheck(data.html);
     } catch (err) {
       const message = err instanceof Error ? err.message : "预览生成失败";
       setError(message);
@@ -78,14 +132,19 @@ export function PublishStep() {
 
   const publishToWechat = async () => {
     setError("");
+    const precheckOk = await runPrecheck();
+    if (!precheckOk) {
+      setProgressText("发布预检未通过");
+      toast.error("发布预检未通过，请先修复失败项");
+      return;
+    }
     setLoading(true);
     setProgressText("正在推送到微信草稿箱...");
     try {
       const data = await fetchJson<{
         mediaId?: string;
         message?: string;
-        mode?: "live" | "mock";
-        beta?: boolean;
+        mode?: "live";
       }>("/api/articles/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,17 +157,14 @@ export function PublishStep() {
       });
       setRuntime({ publishMode: data.mode ?? "unknown" });
       setPublishMessage(data.message ?? "");
-      setIsBetaPublish(Boolean(data.beta || data.mode === "mock"));
       if (data.mediaId) {
         setArticle({ mediaId: data.mediaId });
         setPublished(true);
       }
-      if (data.mode === "mock") {
-        toast.warning("当前为 Beta 模拟发布，尚未调用真实微信接口。");
-      } else {
+      if (data.mode === "live") {
         toast.success("已推送到微信草稿箱");
       }
-      setProgressText(data.mode === "mock" ? "Beta 模拟发布完成" : "发布完成");
+      setProgressText("发布完成");
     } catch (err) {
       const message = err instanceof Error ? err.message : "发布失败";
       setError(message);
@@ -181,6 +237,20 @@ export function PublishStep() {
               variant="outline"
               size="sm"
               className="gap-1.5 h-9 text-[14px] border-[rgba(0,0,0,0.08)]"
+              onClick={() => void runPrecheck()}
+              disabled={precheckLoading}
+            >
+              {precheckLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )}
+              发布前检查
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-9 text-[14px] border-[rgba(0,0,0,0.08)]"
               onClick={generatePreview}
               disabled={loading}
             >
@@ -191,7 +261,7 @@ export function PublishStep() {
               variant="outline"
               className="border-black/[0.08] bg-[#f5f5f7] text-[12px] tracking-[-0.12px] text-[rgba(0,0,0,0.56)]"
             >
-              发布链路：{runtime.publishMode === "mock" ? "Beta 模拟" : runtime.publishMode === "live" ? "真实发布" : "待检测"}
+              发布链路：{runtime.publishMode === "live" ? "真实发布" : "待检测"}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
@@ -222,7 +292,7 @@ export function PublishStep() {
           </div>
         </div>
 
-        {/* Phone mockup */}
+        {/* Phone preview */}
         {error && (
           <div className="px-6 pt-6">
             <StepStatusAlert
@@ -230,6 +300,37 @@ export function PublishStep() {
               title="发布步骤失败"
               description={error}
             />
+          </div>
+        )}
+
+        {precheck && (
+          <div className="px-6 pt-4">
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-[#0071e3]" />
+                  <p className="text-[14px] font-medium text-[#1d1d1f]">发布预检</p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "border text-[12px]",
+                    precheck.ok
+                      ? "border-[#34c759]/30 text-[#16a34a] bg-[#34c759]/10"
+                      : "border-[#f59e0b]/30 text-[#d97706] bg-[#f59e0b]/10"
+                  )}
+                >
+                  通过 {precheck.summary.passed} · 警告 {precheck.summary.warned} · 失败 {precheck.summary.failed}
+                </Badge>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {precheck.checks.map((item) => (
+                  <p key={item.id} className="text-[12px] text-[rgba(0,0,0,0.56)]">
+                    {item.status === "pass" ? "✓" : item.status === "warn" ? "!" : "×"} {item.label}：{item.message}
+                  </p>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -259,7 +360,7 @@ export function PublishStep() {
             <CheckCircle2 className="h-5 w-5 text-[#34c759] shrink-0" />
             <div>
               <p className="text-[14px] font-semibold text-[#1d1d1f]">
-                {isBetaPublish ? "Beta 模拟推送完成" : "已推送到微信草稿箱"}
+                已推送到微信草稿箱
               </p>
               <p className="text-[12px] text-[rgba(0,0,0,0.48)] mt-0.5">
                 media_id: {article.mediaId}

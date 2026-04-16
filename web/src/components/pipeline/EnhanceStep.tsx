@@ -44,7 +44,7 @@ export function EnhanceStep() {
     try {
       const data = await fetchJson<{
         materials: Array<{ title: string; source: string; url: string }>;
-        meta?: { mode?: "live" | "mock" };
+        meta?: { mode?: "live" };
       }>("/api/topics/materials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -53,9 +53,6 @@ export function EnhanceStep() {
       setMaterials(data.materials ?? []);
       setRuntime({ materialsMode: data.meta?.mode ?? "unknown" });
       setProgressText(`采集了 ${data.materials?.length ?? 0} 条素材`);
-      if (data.meta?.mode === "mock") {
-        toast.info("当前素材采集为 Mock 数据，可先用于流程验证。");
-      }
     } catch {
       setError("素材采集失败，请稍后重试。");
       setProgressText("素材采集失败");
@@ -81,13 +78,13 @@ export function EnhanceStep() {
   };
 
   return (
-    <div className="max-w-[880px] mx-auto px-8 py-8 space-y-6">
+    <div className="max-w-[960px] mx-auto px-8 py-8 space-y-7">
       {/* Header */}
       <div>
-        <h2 className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]">
+        <h2 className="saas-title text-[30px] leading-[1.14]">
           内容增强
         </h2>
-        <p className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
+        <p className="saas-muted text-[14px] tracking-[-0.224px] mt-1">
           采集真实素材，让文章有料可依，拒绝 AI 空话
         </p>
       </div>
@@ -103,28 +100,28 @@ export function EnhanceStep() {
         />
       )}
 
-      <div className="bg-white rounded-2xl p-5 ring-1 ring-black/[0.06]">
+      <div className="saas-card p-5">
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">
+          <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-blue-50 text-blue-600 border-0">
             {selectedFramework}
           </Badge>
-          <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0">
+          <Badge variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-slate-100 text-slate-500 border-0">
             {selectedStrategy}
           </Badge>
           {selectedTopic?.keywords?.slice(0, 4).map((kw) => (
-            <Badge key={kw} variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0">
+            <Badge key={kw} variant="outline" className="text-[11px] font-medium tracking-[-0.12px] bg-slate-100 text-slate-500 border-0">
               {kw}
             </Badge>
           ))}
         </div>
-        <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] mt-3 text-[#1d1d1f]">
+        <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.35] mt-3 text-slate-900">
           {selectedTopic?.title}
         </p>
       </div>
 
       {/* Search bar */}
       <div className="flex gap-2">
-        <div className="flex-1 flex items-center gap-3 border border-black/[0.08] rounded-[11px] px-4 py-[9px] bg-white">
+        <div className="flex-1 flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-[10px] bg-white">
           <Search className="h-4 w-4 text-[rgba(0,0,0,0.24)] shrink-0" />
           <input
             className="flex-1 bg-transparent outline-none text-[17px]"
@@ -139,7 +136,7 @@ export function EnhanceStep() {
           variant="outline"
           size="sm"
           onClick={addManualMaterial}
-          className="h-[42px] gap-1.5 text-[14px] border-[rgba(0,0,0,0.08)] shrink-0"
+          className="h-[42px] gap-1.5 text-[14px] border-slate-200 shrink-0"
         >
           <PlusCircle className="h-4 w-4" />
           添加
@@ -174,7 +171,7 @@ export function EnhanceStep() {
           {materials.map((m, i) => (
             <div
               key={i}
-              className="bg-white rounded-2xl p-4 ring-1 ring-black/[0.06] hover:shadow-[rgba(0,0,0,0.06)_0_2px_8px_0px] transition-all"
+          className="saas-card p-4 hover:shadow-md transition-all"
             >
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 text-[#34c759] shrink-0 mt-0.5" />
@@ -182,7 +179,7 @@ export function EnhanceStep() {
                   <p className="text-[15px] font-semibold tracking-[-0.224px] leading-[1.3] text-[#1d1d1f]">
                     {m.title}
                   </p>
-                  <p className="text-[12px] tracking-[-0.12px] text-[rgba(0,0,0,0.32)] mt-1">
+                  <p className="text-[12px] tracking-[-0.12px] text-slate-400 mt-1">
                     {m.source}
                   </p>
                 </div>

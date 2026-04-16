@@ -13,16 +13,20 @@ import { ChevronRight, CheckCircle2, Loader2, Sparkles, ArrowLeft } from "lucide
 
 /* ─── Apple Step: Topic ───────────────────────────────────────────────── */
 const frameworkColors: Record<string, { color: string; bg: string }> = {
-  痛点型: { color: "#ea0d11", bg: "bg-[#ea0d11]/10" },
-  故事型: { color: "#7c3aed", bg: "bg-[#7c3aed]/10" },
-  清单型: { color: "#16a34a", bg: "bg-[#16a34a]/10" },
-  对比型: { color: "#0071e3", bg: "bg-[#0071e3]/10" },
-  热点解读型: { color: "#f59e0b", bg: "bg-[#f59e0b]/10" },
-  纯观点型: { color: "#6b7280", bg: "bg-[#6b7280]/10" },
-  复盘型: { color: "#0891b2", bg: "bg-[#0891b2]/10" },
+  痛点型: { color: "#334155", bg: "bg-slate-100" },
+  故事型: { color: "#334155", bg: "bg-slate-100" },
+  清单型: { color: "#334155", bg: "bg-slate-100" },
+  对比型: { color: "#334155", bg: "bg-slate-100" },
+  热点解读型: { color: "#334155", bg: "bg-slate-100" },
+  纯观点型: { color: "#334155", bg: "bg-slate-100" },
+  复盘型: { color: "#334155", bg: "bg-slate-100" },
 };
 
-export function TopicStep() {
+interface TopicStepProps {
+  onBackToHotspots?: () => void;
+}
+
+export function TopicStep({ onBackToHotspots }: TopicStepProps) {
   const {
     selectedHotspots,
     topics,
@@ -33,7 +37,6 @@ export function TopicStep() {
     currentStep,
     nextStep,
     markStepDone,
-    runMode,
     setCurrentStep,
     setRuntime,
   } = usePipelineStore();
@@ -58,7 +61,7 @@ export function TopicStep() {
           keywords: string[];
           reason: string;
         }>;
-        meta?: { mode?: "live" | "mock"; provider?: string };
+        meta?: { mode?: "live"; provider?: string };
       }>("/api/topics/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,6 +69,10 @@ export function TopicStep() {
       });
       const generated = data.topics ?? [];
       setTopics(generated);
+      const preservedSelection = generated.find(
+        (item) => item.id === selectedTopic?.id && item.title === selectedTopic?.title
+      );
+      setSelectedTopic(preservedSelection ?? generated[0] ?? null);
       setRuntime({
         aiMode: data.meta?.mode ?? "unknown",
         aiProvider: data.meta?.provider ?? "未检测",
@@ -73,12 +80,6 @@ export function TopicStep() {
       setProgressText(`生成了 ${generated.length} 个选题`);
       if (generated.length > 0) {
         markStepDone();
-      }
-      if (data.meta?.mode === "mock") {
-        toast.warning("当前选题来自 Mock 模式，AI 服务暂未就绪。");
-      }
-      if (runMode === "auto" && generated.length > 0) {
-        setSelectedTopic(generated[0]);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "选题生成失败";
@@ -88,7 +89,16 @@ export function TopicStep() {
     } finally {
       setGenerating(false);
     }
-  }, [selectedHotspots, runMode, setTopics, setSelectedTopic, setProgressText, markStepDone, setRuntime]);
+  }, [
+    selectedHotspots,
+    selectedTopic?.id,
+    selectedTopic?.title,
+    setTopics,
+    setSelectedTopic,
+    setProgressText,
+    markStepDone,
+    setRuntime,
+  ]);
 
   useEffect(() => {
     if (currentStep === 2 && selectedHotspots.length > 0 && topics.length === 0) {
@@ -109,20 +119,20 @@ export function TopicStep() {
   };
 
   return (
-    <div className="max-w-[880px] mx-auto px-8 py-8 space-y-6">
+    <div className="max-w-[960px] mx-auto px-8 py-8 space-y-7">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]">
+          <h2 className="saas-title text-[30px] leading-[1.14]">
             选题分析
           </h2>
-          <p className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
+          <p className="saas-muted text-[14px] tracking-[-0.224px] mt-1">
             基于选中的热点生成备选选题，综合评估点击潜力、SEO 友好度和框架适配
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {topics.length > 0 && (
-            <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">
+            <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-blue-50 text-blue-600 border-0">
               {topics.length} 个备选
             </Badge>
           )}
@@ -131,7 +141,7 @@ export function TopicStep() {
             size="sm"
             onClick={generateTopics}
             disabled={generating || selectedHotspots.length === 0}
-            className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px]"
+            className="h-9 gap-1.5 border-slate-200 text-[14px]"
           >
             {generating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -161,7 +171,7 @@ export function TopicStep() {
             <Badge
               key={h.id}
               variant="outline"
-              className="text-[11px] tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.56)] border-0 max-w-[200px] truncate"
+              className="text-[11px] tracking-[-0.12px] bg-slate-100 text-slate-600 border-0 max-w-[200px] truncate"
             >
               {h.title}
             </Badge>
@@ -172,9 +182,9 @@ export function TopicStep() {
       {/* Selected topic tag */}
       {selectedTopic && (
         <div className="flex items-center gap-2">
-          <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">
-            已选：{selectedTopic.framework}
-          </Badge>
+            <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-blue-50 text-blue-600 border-0">
+              已选：{selectedTopic.framework}
+            </Badge>
         </div>
       )}
 
@@ -202,11 +212,11 @@ export function TopicStep() {
               <div
                 key={topic.id}
                 className={cn(
-                  "bg-white rounded-2xl transition-all duration-200 cursor-pointer",
-                  "hover:shadow-[rgba(0,0,0,0.08)_0_2px_12px_0px]",
+                  "saas-card transition-all duration-200 cursor-pointer",
+                  "hover:shadow-md",
                   isSelected
-                    ? "ring-2 ring-[#0071e3]"
-                    : "ring-1 ring-black/[0.06]"
+                    ? "ring-2 ring-blue-500/35"
+                    : "ring-1 ring-slate-200"
                 )}
                 onClick={() => setSelectedTopic(topic)}
               >
@@ -220,8 +230,8 @@ export function TopicStep() {
                         className={cn(
                           "w-5 h-5 rounded-full border-2 transition-colors",
                           isTopScore
-                            ? "border-[#ff9500] bg-[#ff9500]/10"
-                            : "border-[rgba(0,0,0,0.16)]"
+                            ? "border-slate-300 bg-slate-100"
+                            : "border-slate-300"
                         )}
                       />
                     )}
@@ -229,7 +239,7 @@ export function TopicStep() {
 
                   <div className="flex-1 min-w-0">
                     {/* Title */}
-                    <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] text-[#1d1d1f]">
+                    <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.35] text-slate-900">
                       {topic.title}
                     </p>
 
@@ -249,10 +259,10 @@ export function TopicStep() {
                           className={cn(
                             "text-[14px] font-bold font-mono",
                             topic.score >= 80
-                              ? "text-[#ff3b30]"
+                              ? "text-slate-800"
                               : topic.score >= 60
-                              ? "text-[#ff9500]"
-                              : "text-[rgba(0,0,0,0.32)]"
+                              ? "text-slate-700"
+                              : "text-slate-400"
                           )}
                         >
                           {topic.score}
@@ -262,6 +272,14 @@ export function TopicStep() {
 
                     {/* Tags */}
                     <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                      {topic.id.startsWith("evergreen-") && (
+                        <Badge
+                          variant="outline"
+                          className="text-[11px] font-medium tracking-[-0.12px] border-0 bg-emerald-50 text-emerald-700"
+                        >
+                          常青
+                        </Badge>
+                      )}
                       <Badge
                         variant="outline"
                         className="text-[11px] font-medium tracking-[-0.12px] border-0"
@@ -273,7 +291,7 @@ export function TopicStep() {
                         <Badge
                           key={kw}
                           variant="outline"
-                          className="text-[11px] tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0"
+                          className="text-[11px] tracking-[-0.12px] bg-slate-100 text-slate-500 border-0"
                         >
                           {kw}
                         </Badge>
@@ -281,7 +299,7 @@ export function TopicStep() {
                     </div>
 
                     {/* Reason */}
-                    <p className="text-[13px] tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-2 leading-[1.4]">
+                    <p className="text-[13px] tracking-[-0.224px] text-slate-500 mt-2 leading-[1.5]">
                       {topic.reason}
                     </p>
                   </div>
@@ -312,7 +330,13 @@ export function TopicStep() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentStep(1)}
+              onClick={() => {
+                if (onBackToHotspots) {
+                  onBackToHotspots();
+                  return;
+                }
+                setCurrentStep(1);
+              }}
               className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px]"
             >
               <ArrowLeft className="h-4 w-4" />

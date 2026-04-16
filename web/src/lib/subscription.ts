@@ -1,6 +1,27 @@
 import { prisma } from "@/lib/prisma";
 
 export type SubscriptionTier = "free" | "pro";
+type SubscriptionStatus = "active" | "canceled" | "past_due" | "incomplete" | "unpaid" | null;
+
+export interface SubscriptionSnapshot {
+  subscriptionTier?: string | null;
+  subscriptionStatus?: SubscriptionStatus | string | null;
+  subscriptionEndsAt?: Date | null;
+}
+
+export function resolveSubscriptionTier(snapshot: SubscriptionSnapshot | null | undefined): SubscriptionTier {
+  if (!snapshot) return "free";
+  if (snapshot.subscriptionTier !== "pro") return "free";
+
+  const status = snapshot.subscriptionStatus;
+  if (status === "active") return "pro";
+  if (status === "canceled") {
+    if (snapshot.subscriptionEndsAt && snapshot.subscriptionEndsAt > new Date()) {
+      return "pro";
+    }
+  }
+  return "free";
+}
 
 /**
  * 获取用户的订阅等级
@@ -15,21 +36,7 @@ export async function getSubscriptionTier(userId: string): Promise<SubscriptionT
     },
   });
 
-  if (!user) return "free";
-
-  // 已取消但未到期，仍视为 pro
-  if (user.subscriptionTier === "pro" && user.subscriptionStatus === "canceled") {
-    if (user.subscriptionEndsAt && user.subscriptionEndsAt > new Date()) {
-      return "pro";
-    }
-    return "free";
-  }
-
-  if (user.subscriptionTier === "pro" && user.subscriptionStatus === "active") {
-    return "pro";
-  }
-
-  return "free";
+  return resolveSubscriptionTier(user);
 }
 
 /**

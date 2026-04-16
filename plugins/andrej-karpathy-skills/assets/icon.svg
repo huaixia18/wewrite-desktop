@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Karpathy skills icon">
+  <rect width="512" height="512" rx="96" fill="#111827"/>
+  <circle cx="256" cy="256" r="176" fill="#2563eb"/>
+  <path d="M176 336V176h34v62h3l52-62h44l-64 74 66 86h-42l-48-63h-11v63h-34z" fill="#fff"/>
+</svg>

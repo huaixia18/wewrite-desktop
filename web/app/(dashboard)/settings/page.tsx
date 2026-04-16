@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -12,7 +12,9 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
+import { StepStatusAlert } from "@/components/pipeline/StepStatusAlert";
 import {
   Save,
   CheckCircle2,
@@ -22,6 +24,7 @@ import {
   Zap,
   CreditCard,
   ExternalLink,
+  RefreshCcw,
 } from "lucide-react";
 
 /* ─── Apple Settings Page ─────────────────────────────────────────────
@@ -88,21 +91,138 @@ interface TestResult {
   ok: boolean;
   provider: string;
   baseUrl: string;
+  model?: string;
+  tier?: AccessTier;
   reply?: string;
   latency?: string;
   error?: string;
 }
 
+type AccessTier = "free" | "pro";
+type ModelVendor = "openai" | "anthropic" | "other";
+
+interface ModelVendorGroups {
+  openai: string[];
+  anthropic: string[];
+  other: string[];
+}
+
 interface SubscriptionStatus {
-  tier: string;
+  tier: AccessTier;
   status: string;
   isActive: boolean;
   endsAt: string | null;
   hasStripe: boolean;
 }
 
+interface SettingsResponse {
+  aiProvider?: string;
+  aiProviderReady?: boolean;
+  model?: string;
+  tier?: AccessTier;
+  styleConfig?: {
+    persona?: string;
+    humanizerEnabled?: boolean;
+    humanizerStrict?: "relaxed" | "standard" | "strict";
+  };
+}
+
+interface ModelListResponse {
+  models?: unknown[];
+  selectedModel?: string;
+  vendorGroups?: Partial<Record<ModelVendor, unknown>>;
+  tier?: AccessTier;
+  source?: string;
+  error?: string;
+}
+
+interface SubscriptionStatusResponse extends SubscriptionStatus {
+  error?: string;
+}
+
+interface SaveSettingsResponse {
+  ok?: boolean;
+  tier?: AccessTier;
+  model?: string;
+  warning?: string | null;
+}
+
 const SETTINGS_TABS = ["account", "subscription", "ai", "style", "wechat"] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+function uniqueModels(items: string[]): string[] {
+  const out: string[] = [];
+  for (const item of items) {
+    const model = item.trim();
+    if (!model) continue;
+    if (!out.includes(model)) out.push(model);
+  }
+  return out;
+}
+
+const FREE_TIER_FALLBACK_MODELS: Record<string, string> = {
+  anthropic: "claude-3-5-haiku-latest",
+  openai: "gpt-4.1-mini",
+};
+
+const MODEL_VENDOR_LABELS: Record<ModelVendor, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  other: "其他兼容模型",
+};
+
+function fallbackModel(provider: string, tier: AccessTier = "pro"): string {
+  if (tier === "free") {
+    return FREE_TIER_FALLBACK_MODELS[provider] ?? FREE_TIER_FALLBACK_MODELS.anthropic;
+  }
+  return provider === "openai" ? "gpt-4o" : "claude-sonnet-4-7-20250514";
+}
+
+function normalizeModelGroups(
+  groups: Partial<Record<ModelVendor, unknown>> | undefined,
+  fallbackModels: string[]
+): ModelVendorGroups {
+  const normalized: ModelVendorGroups = {
+    openai: [],
+    anthropic: [],
+    other: [],
+  };
+
+  if (groups && typeof groups === "object") {
+    for (const vendor of ["openai", "anthropic", "other"] as const) {
+      const list = groups[vendor];
+      if (Array.isArray(list)) {
+        normalized[vendor] = list.filter((m): m is string => typeof m === "string");
+      }
+    }
+  }
+
+  const total = normalized.openai.length + normalized.anthropic.length + normalized.other.length;
+  if (total > 0) return normalized;
+
+  for (const model of fallbackModels) {
+    const value = model.trim().toLowerCase();
+    if (
+      value.startsWith("gpt-") ||
+      value.startsWith("text-") ||
+      /^o\d/.test(value)
+    ) {
+      normalized.openai.push(model);
+      continue;
+    }
+    if (value.startsWith("claude-")) {
+      normalized.anthropic.push(model);
+      continue;
+    }
+    normalized.other.push(model);
+  }
+
+  return normalized;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -116,6 +236,18 @@ export default function SettingsPage() {
   const [nickname, setNickname] = useState(session?.user?.name ?? "");
   const [persona, setPersona] = useState("midnight-friend");
   const [aiProvider, setAiProvider] = useState("anthropic");
+  const [aiModel, setAiModel] = useState(fallbackModel("anthropic", "free"));
+  const [modelTier, setModelTier] = useState<AccessTier>("free");
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [modelVendorGroups, setModelVendorGroups] = useState<ModelVendorGroups>({
+    openai: [],
+    anthropic: [],
+    other: [],
+  });
+  const [modelSource, setModelSource] = useState<"" | "remote" | "fallback">("");
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelError, setModelError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [aiProviderReady, setAiProviderReady] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [humanizerEnabled, setHumanizerEnabled] = useState(true);
@@ -128,34 +260,102 @@ export default function SettingsPage() {
   // 订阅状态
   const [sub, setSub] = useState<SubscriptionStatus | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState("");
 
   // 连接测试
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [saveError, setSaveError] = useState("");
 
   // 页面加载时从 DB 读取用户 AI 配置
+  const loadModelOptions = useCallback(async (
+    provider: string,
+    preferredModel?: string,
+    tierHint: AccessTier = "free"
+  ) => {
+    setModelLoading(true);
+    setModelError("");
+
+    try {
+      const data = await fetchJson<ModelListResponse>(`/api/ai/models?provider=${encodeURIComponent(provider)}`, {
+        cache: "no-store",
+      });
+      const models = Array.isArray(data.models)
+        ? data.models.filter((m: unknown) => typeof m === "string")
+        : [];
+      const tier = data.tier === "pro" ? "pro" : "free";
+      const selectedFromServer =
+        typeof data.selectedModel === "string" ? data.selectedModel : "";
+      const merged = uniqueModels([selectedFromServer, ...models]);
+      const grouped = normalizeModelGroups(data.vendorGroups, merged);
+
+      setModelTier(tier);
+      setModelOptions(merged);
+      setModelVendorGroups(grouped);
+      setModelSource(data.source === "remote" ? "remote" : "fallback");
+      setModelError(typeof data.error === "string" ? data.error : "");
+
+      setAiModel((prev) => {
+        const current = (selectedFromServer || preferredModel || prev).trim();
+        if (current && merged.includes(current)) return current;
+        return merged[0] ?? fallbackModel(provider, tier);
+      });
+    } catch (err) {
+      const message = getErrorMessage(err, "模型列表拉取失败");
+      const fallback = uniqueModels([preferredModel ?? fallbackModel(provider, tierHint)]);
+      setModelOptions(fallback);
+      setModelVendorGroups(normalizeModelGroups(undefined, fallback));
+      setModelSource("fallback");
+      setModelError(message);
+      setAiModel((prev) => {
+        const current = (preferredModel ?? prev).trim();
+        if (current) return current;
+        return fallback[0] ?? fallbackModel(provider, tierHint);
+      });
+    } finally {
+      setModelLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!session?.user?.id) return;
-    fetch("/api/settings/ai")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.aiProvider) setAiProvider(data.aiProvider);
+
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      try {
+        const data = await fetchJson<SettingsResponse>("/api/settings/ai");
+        if (cancelled) return;
+
+        setLoadError("");
+        const provider = data.aiProvider === "openai" ? "openai" : "anthropic";
+        const tier = data.tier === "pro" ? "pro" : "free";
+        const model = typeof data.model === "string" ? data.model : fallbackModel(provider, tier);
+        setAiProvider(provider);
+        setAiModel(model);
+        setModelTier(tier);
         setAiProviderReady(Boolean(data.aiProviderReady));
+        void loadModelOptions(provider, model, tier);
+
         if (data.styleConfig && typeof data.styleConfig === "object") {
-          const style = data.styleConfig as {
-            persona?: string;
-            humanizerEnabled?: boolean;
-            humanizerStrict?: "relaxed" | "standard" | "strict";
-          };
+          const style = data.styleConfig;
           if (style.persona) setPersona(style.persona);
           if (typeof style.humanizerEnabled === "boolean") {
             setHumanizerEnabled(style.humanizerEnabled);
           }
           if (style.humanizerStrict) setHumanizerStrict(style.humanizerStrict);
         }
-      })
-      .catch(() => {});
-  }, [session?.user?.id]);
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(getErrorMessage(err, "设置加载失败"));
+      }
+    };
+
+    void loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, loadModelOptions]);
 
   useEffect(() => {
     if (!tabFromQuery || !SETTINGS_TABS.includes(tabFromQuery)) return;
@@ -165,19 +365,38 @@ export default function SettingsPage() {
   // 加载订阅状态
   useEffect(() => {
     if (!session?.user?.id) return;
-    fetch("/api/subscriptions/status")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!data.error) setSub(data);
-      })
-      .catch(() => {});
+
+    let cancelled = false;
+
+    const loadSubscription = async () => {
+      try {
+        const data = await fetchJson<SubscriptionStatusResponse>("/api/subscriptions/status");
+        if (cancelled) return;
+        if (!data.error) {
+          setSub(data);
+          setModelTier(data.tier === "pro" ? "pro" : "free");
+        }
+        setSubscriptionError("");
+      } catch (err) {
+        if (cancelled) return;
+        setSub(null);
+        setSubscriptionError(getErrorMessage(err, "订阅状态加载失败"));
+      }
+    };
+
+    void loadSubscription();
+    return () => {
+      cancelled = true;
+    };
   }, [session?.user?.id]);
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError("");
     try {
       const payload: Record<string, unknown> = {
         aiProvider,
+        model: aiModel.trim() || fallbackModel(aiProvider, modelTier),
         styleConfig: {
           persona,
           humanizerEnabled,
@@ -185,26 +404,46 @@ export default function SettingsPage() {
         },
       };
 
-      const res = await fetch("/api/settings/ai", {
+      const saveData = await fetchJson<SaveSettingsResponse>("/api/settings/ai", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        const checkRes = await fetch(`/api/ai/test?provider=${encodeURIComponent(aiProvider)}`);
-        const checkData = await checkRes.json();
-        setAiProviderReady(Boolean(checkData.ok));
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+      if (saveData.tier) {
+        setModelTier(saveData.tier);
       }
-    } catch {}
-    setSaving(false);
+      if (typeof saveData.model === "string" && saveData.model.trim()) {
+        setAiModel(saveData.model);
+      }
+      if (saveData.warning) {
+        setModelError(saveData.warning);
+      }
+
+      const finalModel = saveData.model?.trim() || aiModel.trim() || fallbackModel(aiProvider, modelTier);
+
+      const checkParams = new URLSearchParams({
+        provider: aiProvider,
+        model: finalModel,
+      });
+      const checkData = await fetchJson<TestResult>(`/api/ai/test?${checkParams}`);
+      setAiProviderReady(Boolean(checkData.ok));
+      void loadModelOptions(aiProvider, finalModel, saveData.tier ?? modelTier);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(getErrorMessage(err, "保存失败，请稍后重试"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleProviderChange = (id: string) => {
     setAiProvider(id);
     setAiProviderReady(false);
     setTestResult(null);
+    const model = fallbackModel(id, modelTier);
+    setAiModel(model);
+    void loadModelOptions(id, model, modelTier);
   };
 
   const handleTestConnection = async () => {
@@ -212,7 +451,10 @@ export default function SettingsPage() {
     setTestResult(null);
 
     try {
-      const params = new URLSearchParams({ provider: aiProvider });
+      const params = new URLSearchParams({
+        provider: aiProvider,
+        model: aiModel.trim() || fallbackModel(aiProvider, modelTier),
+      });
 
       const res = await fetch(`/api/ai/test?${params}`);
       const data = await res.json();
@@ -230,10 +472,32 @@ export default function SettingsPage() {
     }
   };
 
-  const selectedProvider = AI_PROVIDERS.find((p) => p.id === aiProvider)!;
+  const handleOpenPortal = async () => {
+    setPortalLoading(true);
+    setSubscriptionError("");
+    try {
+      const data = await fetchJson<{ url?: string }>("/api/subscriptions/portal", {
+        method: "POST",
+      });
+      if (!data.url) {
+        throw new Error("未获取到订阅管理链接");
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      setSubscriptionError(getErrorMessage(err, "订阅中心暂时不可用"));
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const selectedProvider =
+    AI_PROVIDERS.find((p) => p.id === aiProvider) ?? AI_PROVIDERS[0];
+  const isProTier = modelTier === "pro" || Boolean(sub?.isActive);
+  const subscriptionLabel = isProTier ? "Pro" : "Free";
+  const subscriptionTone = isProTier ? "text-[#34c759]" : "text-[rgba(0,0,0,0.62)]";
 
   return (
-    <div className="min-h-screen bg-[#f3f6fb]">
+    <div className="min-h-screen bg-[#f3f6fb] pb-24 sm:pb-0">
       {/* ── Page Header ── */}
       <div className="px-6 pt-4 lg:px-8">
         <div className="mx-auto max-w-[1200px] rounded-[24px] border border-black/[0.06] bg-white px-6 py-5 shadow-[rgba(0,0,0,0.04)_0_8px_20px_-12px]">
@@ -249,10 +513,54 @@ export default function SettingsPage() {
 
       {/* ── Content ── */}
       <div className="mx-auto max-w-[1200px] px-6 py-8 lg:px-8">
+        {loadError && (
+          <div className="mb-6">
+            <StepStatusAlert
+              variant="error"
+              title="设置加载失败"
+              description={loadError}
+            />
+          </div>
+        )}
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-[rgba(0,0,0,0.4)]">账号</p>
+            <p className="mt-1 text-[14px] font-medium tracking-[-0.16px] text-[#111827]">
+              {session?.user?.email ? "已登录" : "待完善"}
+            </p>
+            <p className="mt-0.5 truncate text-[12px] text-[rgba(0,0,0,0.48)]">{session?.user?.email ?? "暂无邮箱"}</p>
+          </div>
+          <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-[rgba(0,0,0,0.4)]">订阅</p>
+            <p className={cn("mt-1 text-[14px] font-medium tracking-[-0.16px]", subscriptionTone)}>
+              {subscriptionLabel}
+            </p>
+            <p className="mt-0.5 text-[12px] text-[rgba(0,0,0,0.48)]">
+              {sub?.isActive ? "高级功能已解锁" : "可升级解锁完整能力"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-[rgba(0,0,0,0.4)]">AI 服务</p>
+            <p className={cn("mt-1 text-[14px] font-medium tracking-[-0.16px]", aiProviderReady ? "text-[#34c759]" : "text-[#ff3b30]")}>
+              {aiProviderReady ? "服务可用" : "服务未就绪"}
+            </p>
+            <p className="mt-0.5 truncate text-[12px] text-[rgba(0,0,0,0.48)]">
+              {selectedProvider.name} · {aiModel}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.12em] text-[rgba(0,0,0,0.4)]">写作风格</p>
+            <p className="mt-1 text-[14px] font-medium tracking-[-0.16px] text-[#111827]">
+              {PERSONAS.find((p) => p.id === persona)?.name ?? "未设置"}
+            </p>
+            <p className="mt-0.5 text-[12px] text-[rgba(0,0,0,0.48)]">Humanizer：{humanizerEnabled ? "开启" : "关闭"}</p>
+          </div>
+        </div>
+
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as SettingsTab)} className="space-y-6">
           <TabsList
             variant="default"
-            className="bg-transparent p-0 gap-1 mb-2"
+            className="mb-2 w-full justify-start gap-1 overflow-x-auto bg-transparent p-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {[
               { value: "account", label: "账号" },
@@ -264,7 +572,7 @@ export default function SettingsPage() {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="rounded-full px-[18px] py-[7px] text-[14px] font-medium text-[#1d1d1f] hover:bg-black/[0.04] data-[active]:bg-[#1d1d1f] data-[active]:text-white aria-selected:bg-[#1d1d1f] aria-selected:text-white data-selected:bg-[#1d1d1f] data-selected:text-white"
+                className="shrink-0 rounded-full px-[18px] py-[7px] text-[14px] font-medium text-[#1d1d1f] hover:bg-black/[0.04] data-[active]:bg-[#1d1d1f] data-[active]:text-white aria-selected:bg-[#1d1d1f] aria-selected:text-white data-selected:bg-[#1d1d1f] data-selected:text-white"
               >
                 {label}
               </TabsTrigger>
@@ -374,13 +682,7 @@ export default function SettingsPage() {
                         variant="outline"
                         size="sm"
                         className="border-white/15 text-white hover:bg-white/8 h-9"
-                        onClick={async () => {
-                          setPortalLoading(true);
-                          const res = await fetch("/api/subscriptions/portal", { method: "POST" });
-                          const data = await res.json();
-                          if (data.url) window.location.href = data.url;
-                          else setPortalLoading(false);
-                        }}
+                        onClick={handleOpenPortal}
                         disabled={portalLoading}
                       >
                         {portalLoading ? (
@@ -391,7 +693,6 @@ export default function SettingsPage() {
                         {portalLoading ? "跳转中..." : "管理订阅"}
                       </Button>
                     </div>
-
                     {/* Pro 功能列表 */}
                     <div className="space-y-2">
                       <p className="text-[14px] font-medium text-[rgba(0,0,0,0.48)]">已解锁功能</p>
@@ -447,6 +748,13 @@ export default function SettingsPage() {
                     </div>
                   </>
                 )}
+                {subscriptionError && (
+                  <StepStatusAlert
+                    variant="error"
+                    title="订阅中心暂不可用"
+                    description={subscriptionError}
+                  />
+                )}
               </div>
             </Card>
           </TabsContent>
@@ -491,6 +799,83 @@ export default function SettingsPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-[14px] font-medium tracking-[-0.224px] text-[#1d1d1f] dark:text-white/80">
+                      模型
+                    </Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 border-[rgba(0,0,0,0.08)] text-[12px]"
+                      onClick={() => void loadModelOptions(aiProvider, aiModel, modelTier)}
+                      disabled={modelLoading}
+                    >
+                      {modelLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-3.5 w-3.5" />
+                      )}
+                      {modelLoading ? "拉取中..." : "刷新模型"}
+                    </Button>
+                  </div>
+
+                  <Input
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    placeholder={
+                      isProTier
+                        ? "输入模型名，例如 gpt-4.1 / claude-sonnet-4-7-20250514"
+                        : "免费版仅支持基础模型，请从下方选择"
+                    }
+                    className="h-10"
+                    disabled={!isProTier}
+                  />
+
+                  {modelOptions.length > 0 && (
+                    <div className="space-y-3">
+                      {(["openai", "anthropic", "other"] as const).map((vendor) => {
+                        const vendorModels = modelVendorGroups[vendor];
+                        if (vendorModels.length === 0) return null;
+
+                        return (
+                          <div key={vendor} className="space-y-2">
+                            <p className="text-[11px] font-medium tracking-[0.06em] text-[rgba(0,0,0,0.4)]">
+                              {MODEL_VENDOR_LABELS[vendor]}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {vendorModels.map((model) => (
+                                <button
+                                  key={model}
+                                  onClick={() => setAiModel(model)}
+                                  className={cn(
+                                    "rounded-full border px-3 py-1.5 text-[12px] transition-all",
+                                    aiModel === model
+                                      ? "border-[#0071e3]/35 bg-[#0071e3]/10 text-[#0071e3]"
+                                      : "border-black/[0.08] text-[rgba(0,0,0,0.68)] hover:bg-black/[0.02]"
+                                  )}
+                                >
+                                  {model}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <p className="text-[12px] tracking-[-0.12px] text-[rgba(0,0,0,0.45)]">
+                    {modelSource === "remote"
+                      ? "已从当前服务端代理自动拉取模型列表。"
+                      : isProTier
+                        ? "模型列表拉取失败；你仍可手动输入模型名。"
+                        : "模型列表拉取失败；免费版将自动回退到基础模型。"}
+                    {!isProTier ? "当前套餐仅支持基础模型（mini / nano / haiku）。" : ""}
+                    {modelError ? `（${modelError}）` : ""}
+                  </p>
                 </div>
 
                 <div className="rounded-xl border border-[#0071e3]/20 bg-[#0071e3]/6 p-4">
@@ -573,6 +958,11 @@ export default function SettingsPage() {
                         {testResult.ok ? (
                           <p className="text-[12px] text-[rgba(0,0,0,0.48)] dark:text-white/48 mt-0.5">
                             {selectedProvider.name} · {testResult.baseUrl}
+                            {testResult.model && (
+                              <span className="ml-2 text-[rgba(0,0,0,0.68)]">
+                                模型：{testResult.model}
+                              </span>
+                            )}
                             {testResult.reply && (
                               <span className="ml-2 font-mono text-[#34c759]">
                                 → &quot;{testResult.reply}&quot;
@@ -722,7 +1112,7 @@ export default function SettingsPage() {
         </Tabs>
 
         {/* 保存按钮 */}
-        <div className="flex items-center gap-3 mt-6 pt-2">
+        <div className="mt-6 hidden items-center gap-3 pt-2 sm:flex">
           <Button
             variant="pill-filled"
             size="pill-sm"
@@ -743,6 +1133,38 @@ export default function SettingsPage() {
               已保存
             </span>
           )}
+          {saveError && (
+            <span className="text-[13px] text-[#ff3b30]">{saveError}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-black/[0.08] bg-white/95 px-4 py-3 backdrop-blur-md sm:hidden">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-2">
+          {saveError && (
+            <p className="text-[12px] text-[#ff3b30]">{saveError}</p>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[12px] tracking-[-0.1px] text-[rgba(0,0,0,0.5)]">
+              当前标签：{[
+                { value: "account", label: "账号" },
+                { value: "subscription", label: "订阅" },
+                { value: "ai", label: "AI" },
+                { value: "style", label: "风格" },
+                { value: "wechat", label: "微信" },
+              ].find((tab) => tab.value === activeTab)?.label ?? activeTab}
+            </p>
+            <Button
+              variant="pill-filled"
+              size="sm"
+              onClick={handleSave}
+              disabled={saving}
+              className="h-9 gap-1.5 px-4 text-[13px]"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? "保存中" : "保存"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

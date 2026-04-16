@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { PRO_FEATURES } from "@/lib/subscription";
+import { PRO_FEATURES, resolveSubscriptionTier } from "@/lib/subscription";
+import { getFreeTierModelCatalog } from "@/lib/ai-models";
 
 /**
  * GET /api/subscriptions/status
@@ -27,21 +28,25 @@ export async function GET() {
     return NextResponse.json({ error: "用户不存在" }, { status: 404 });
   }
 
-  const isActive =
-    user.subscriptionTier === "pro" &&
-    ["active", "canceled"].includes(user.subscriptionStatus) &&
-    (user.subscriptionStatus !== "canceled" ||
-      (user.subscriptionEndsAt && user.subscriptionEndsAt > new Date()));
+  const tier = resolveSubscriptionTier(user);
+  const isActive = tier === "pro";
 
   return NextResponse.json({
-    tier: user.subscriptionTier,
+    tier,
     status: user.subscriptionStatus,
     isActive,
     endsAt: user.subscriptionEndsAt?.toISOString() ?? null,
     hasStripe: !!user.stripeCustomerId,
     features: {
-      free: Object.keys(PRO_FEATURES),
-      pro: [],
+      free: ["热点挖掘", "AI 写作", "基础模型访问（mini / nano / haiku）"],
+      pro: Object.values(PRO_FEATURES),
+    },
+    modelAccess: {
+      free: {
+        openai: getFreeTierModelCatalog("openai"),
+        anthropic: getFreeTierModelCatalog("anthropic"),
+      },
+      pro: "all",
     },
   });
 }

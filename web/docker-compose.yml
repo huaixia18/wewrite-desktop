@@ -34,8 +34,16 @@ services:
       AUTH_SECRET: "wewrite-dev-secret-change-in-production"
       AUTH_TRUST_HOST: "true"
       # AI (fill in your own keys for production)
+      AI_GATEWAY_API_KEY: "${AI_GATEWAY_API_KEY:-}"
+      AI_GATEWAY_BASE_URL: "${AI_GATEWAY_BASE_URL:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-sk-ant-placeholder}"
+      ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-4-7-20250514}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o}"
+      IMAGE_GEN_API_KEY: "${IMAGE_GEN_API_KEY:-}"
+      IMAGE_GEN_BASE_URL: "${IMAGE_GEN_BASE_URL:-}"
       # WeChat OAuth (optional)
       WECHAT_APP_ID: "${WECHAT_APP_ID:-}"
       WECHAT_APP_SECRET: "${WECHAT_APP_SECRET:-}"

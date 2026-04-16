@@ -105,6 +105,12 @@ export async function POST(req: Request) {
       enhanceStrategy: body.enhanceStrategy,
       keywords: body.keywords ?? [],
       wordCount: body.content?.replace(/[#*`>\n]/g, "").length ?? 0,
+      compositeScore:
+        typeof body.compositeScore === "number" ? body.compositeScore : undefined,
+      qualityReport:
+        body.qualityReport && typeof body.qualityReport === "object"
+          ? body.qualityReport
+          : undefined,
     },
   });
 
@@ -136,6 +142,12 @@ export async function PUT(req: Request) {
     coverPrompt: body.coverPrompt ?? null,
     mediaId: body.mediaId ?? null,
     humanizerReport: body.humanizerReport ?? undefined,
+    compositeScore:
+      typeof body.compositeScore === "number" ? body.compositeScore : undefined,
+    qualityReport:
+      body.qualityReport && typeof body.qualityReport === "object"
+        ? body.qualityReport
+        : undefined,
   };
 
   if (articleId) {

@@ -1,0 +1,43 @@
+{
+  "name": "andrej-karpathy-skills",
+  "version": "1.0.0",
+  "description": "Behavioral guidelines to reduce common LLM coding mistakes, inspired by Andrej Karpathy's observations.",
+  "author": {
+    "name": "forrestchang",
+    "email": "forrestchang@users.noreply.github.com",
+    "url": "https://github.com/forrestchang"
+  },
+  "homepage": "https://github.com/forrestchang/andrej-karpathy-skills",
+  "repository": "https://github.com/forrestchang/andrej-karpathy-skills",
+  "license": "MIT",
+  "keywords": [
+    "guidelines",
+    "best-practices",
+    "coding",
+    "karpathy"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Karpathy Skills",
+    "shortDescription": "Coding behavior guidelines to reduce common LLM mistakes",
+    "longDescription": "Use this plugin for behavior-first coding guidance: think before coding, keep solutions simple, make surgical changes, and execute against verifiable goals.",
+    "developerName": "forrestchang",
+    "category": "Coding",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/forrestchang/andrej-karpathy-skills",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    "defaultPrompt": [
+      "Use Karpathy guidelines to review this implementation plan for avoidable complexity.",
+      "Apply these guidelines while refactoring this module with minimal, focused edits.",
+      "Turn this coding request into clear success criteria and a verification loop."
+    ],
+    "brandColor": "#111827",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "screenshots": []
+  }
+}

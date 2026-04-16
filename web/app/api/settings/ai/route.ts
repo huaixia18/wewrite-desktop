@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  isModelAllowedForTier,
+  isProvider,
+  isProviderConfigured,
+  normalizeProvider,
+  resolveUserModel,
+  resolveUserModelForTier,
+} from "@/lib/ai-models";
+import { getSubscriptionTier, resolveSubscriptionTier } from "@/lib/subscription";
+
+const DEFAULT_STYLE_CONFIG = {
+  persona: "midnight-friend",
+  humanizerEnabled: true,
+  humanizerStrict: "standard",
+} as const;
 
 /**
  * GET /api/settings/ai
@@ -19,6 +34,9 @@ export async function GET() {
       model: true,
       styleConfig: true,
       wechatOpenid: true,
+      subscriptionTier: true,
+      subscriptionStatus: true,
+      subscriptionEndsAt: true,
     },
   });
 
@@ -26,23 +44,38 @@ export async function GET() {
     return NextResponse.json({ error: "用户不存在" }, { status: 404 });
   }
 
-  const provider = user.aiProvider === "openai" ? "openai" : "anthropic";
-  const managedApiKey = process.env[`${provider.toUpperCase()}_API_KEY`] ?? "";
-  const aiConfigured = Boolean(managedApiKey && !managedApiKey.includes("placeholder"));
-  const styleConfig = user.styleConfig as Record<string, unknown> | null;
-  const styleConfigured = Boolean(styleConfig && Object.keys(styleConfig).length > 0);
+  let provider = normalizeProvider(user.aiProvider);
+  const tier = resolveSubscriptionTier(user);
+  let aiConfigured = isProviderConfigured(provider);
+  if (!aiConfigured) {
+    const fallbackProvider = provider === "openai" ? "anthropic" : "openai";
+    if (isProviderConfigured(fallbackProvider)) {
+      provider = fallbackProvider;
+      aiConfigured = true;
+    }
+  }
+
+  const model = resolveUserModelForTier(provider, user.model, tier);
+  const storedStyleConfig = user.styleConfig as Record<string, unknown> | null;
+  const styleConfig = {
+    ...DEFAULT_STYLE_CONFIG,
+    ...(storedStyleConfig ?? {}),
+  };
+  const styleConfigured = true;
 
   return NextResponse.json({
     aiProvider: provider,
     aiManaged: true,
     aiProviderReady: aiConfigured,
-    model: user.model,
+    model,
     styleConfig: styleConfig ?? {},
     onboarding: {
       aiConfigured,
       styleConfigured,
       wechatConfigured: Boolean(user.wechatOpenid),
+      wechatRequired: false,
     },
+    tier,
   });
 }
 
@@ -63,21 +96,24 @@ export async function PUT(req: NextRequest) {
   };
   const { aiProvider, model, styleConfig } = body;
 
-  if (!aiProvider || !["anthropic", "openai"].includes(aiProvider)) {
+  if (!isProvider(aiProvider)) {
     return NextResponse.json({ error: "无效的 AI 提供商" }, { status: 400 });
   }
 
   try {
+    const tier = await getSubscriptionTier(session.user.id);
+    const requestedModel = typeof model === "string" ? model : null;
+    const resolvedModel = resolveUserModelForTier(aiProvider, requestedModel, tier);
+    const trimmedRequestedModel = resolveUserModel(aiProvider, requestedModel);
+    const downgraded = !isModelAllowedForTier(aiProvider, trimmedRequestedModel, tier);
+
     const data: Record<string, unknown> = {
       aiProvider,
       // 平台托管模式：清空用户自定义 Key / 端点
       aiApiKey: null,
       aiBaseUrl: null,
+      model: resolvedModel,
     };
-
-    if (typeof model === "string" && model.trim()) {
-      data.model = model.trim();
-    }
 
     if (styleConfig && typeof styleConfig === "object" && !Array.isArray(styleConfig)) {
       data.styleConfig = styleConfig;
@@ -88,7 +124,16 @@ export async function PUT(req: NextRequest) {
       data,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      tier,
+      model: resolvedModel,
+      downgraded,
+      warning:
+        tier === "free" && downgraded
+          ? "免费版仅支持基础模型（mini / nano / haiku），已自动切换到可用模型。"
+          : null,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -29,8 +29,8 @@ RUN apk add --no-cache python3 py3-pip && \
     pip3 install --break-system-packages --no-cache-dir requests && \
     apk del py3-pip
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN grep -q '^nodejs:' /etc/group || addgroup --system --gid 1001 nodejs
+RUN id -u nextjs >/dev/null 2>&1 || adduser --system --uid 1001 nextjs
 
 # 从 builder 复制构建产物 + 完整 node_modules（不需要 runtime npm install）
 COPY --from=builder /app/.next/standalone ./

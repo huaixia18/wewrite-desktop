@@ -15,6 +15,25 @@ import { Loader2, RotateCcw, Save, ChevronRight, Cloud } from "lucide-react";
  * Split-pane: editor + live preview
  * Dark title bar, light content area
  */
+function extractTopicTerms(topic: { title: string; keywords: string[] }): string[] {
+  const titleTerms = topic.title
+    .split(/[：:，,、/\-\s]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2);
+  const keywordTerms = (topic.keywords ?? []).map((item) => item.trim()).filter((item) => item.length >= 2);
+  return [...new Set([...titleTerms, ...keywordTerms])].slice(0, 10);
+}
+
+function isContentRelevantToTopic(
+  content: string,
+  topic: { title: string; keywords: string[] }
+): boolean {
+  const terms = extractTopicTerms(topic);
+  if (terms.length === 0) return true;
+  const matched = terms.filter((term) => content.includes(term)).length;
+  return matched >= Math.min(2, terms.length);
+}
+
 export function WritingStep() {
   const {
     selectedTopic,
@@ -40,7 +59,29 @@ export function WritingStep() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const abortRef = useRef<AbortController | null>(null);
+  const retryRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const selectedTopicFingerprint = [
+    selectedTopic?.id ?? "",
+    selectedTopic?.title ?? "",
+    (selectedTopic?.keywords ?? []).join(","),
+  ].join("|");
+  const articleTopicFingerprint = [
+    article.topic?.id ?? "",
+    article.topic?.title ?? "",
+    (article.topic?.keywords ?? []).join(","),
+  ].join("|");
+  const selectedContextKey = [
+    selectedTopicFingerprint,
+    selectedFramework ?? "",
+    selectedStrategy ?? "",
+  ].join("|");
+  const articleContextKey = [
+    articleTopicFingerprint,
+    article.framework ?? "",
+    article.enhanceStrategy ?? "",
+  ].join("|");
+  const contextMatched = Boolean(selectedTopic?.id) && selectedContextKey === articleContextKey;
 
   const saveDraft = useCallback(
     async (silent = false) => {
@@ -99,13 +140,27 @@ export function WritingStep() {
 
   const startWriting = useCallback(async () => {
     if (generating) return;
+    if (!selectedTopic?.title) {
+      setError("未选择选题，请先返回上一步选择选题");
+      return;
+    }
     setError("");
     setGenerating(true);
     setStreamedContent("");
     setProgress(0);
     setDone(false);
+    setArticle({
+      topic: selectedTopic,
+      framework: selectedFramework ?? undefined,
+      enhanceStrategy: selectedStrategy ?? undefined,
+      keywords: selectedTopic.keywords ?? [],
+      title: selectedTopic.title,
+      content: "",
+      wordCount: 0,
+    });
     setProgressText("正在写作...");
     abortRef.current = new AbortController();
+    let shouldRetry = false;
 
     try {
       const res = await fetch("/api/ai/write", {
@@ -124,14 +179,11 @@ export function WritingStep() {
 
       const aiModeHeader = res.headers.get("X-AI-Mode");
       const aiProviderHeader = res.headers.get("X-AI-Provider");
-      if (aiModeHeader === "mock" || aiModeHeader === "live") {
+      if (aiModeHeader === "live") {
         setRuntime({
           aiMode: aiModeHeader,
           aiProvider: aiProviderHeader || "未检测",
         });
-        if (aiModeHeader === "mock") {
-          toast.warning("当前为 Mock 写作模式，AI 服务暂未就绪。");
-        }
       }
 
       const reader = res.body.getReader();
@@ -186,9 +238,25 @@ export function WritingStep() {
       }
 
       if (assembled.trim()) {
-        setDone(true);
-        setProgress(100);
-        setProgressText("写作完成");
+        if (isContentRelevantToTopic(assembled, selectedTopic)) {
+          retryRef.current = 0;
+          setDone(true);
+          setProgress(100);
+          setProgressText("写作完成");
+        } else if (retryRef.current < 1) {
+          retryRef.current += 1;
+          shouldRetry = true;
+          setDone(false);
+          setProgress(0);
+          setStreamedContent("");
+          setArticle({ content: "", wordCount: 0 });
+          setProgressText("选题相关性不足，正在自动重试...");
+        } else {
+          setDone(false);
+          setProgressText("写作结果与选题不一致，请重试");
+          setError("生成内容与当前选题相关性不足，请点击“重新生成”再试一次。");
+          toast.error("生成内容与选题不一致，请重试");
+        }
       }
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
@@ -199,6 +267,11 @@ export function WritingStep() {
       }
     } finally {
       setGenerating(false);
+      if (shouldRetry) {
+        window.setTimeout(() => {
+          void startWriting();
+        }, 180);
+      }
     }
   }, [
     generating,
@@ -218,11 +291,41 @@ export function WritingStep() {
   }, [done, streamedContent, markStepDone]);
 
   useEffect(() => {
-    if (!article.content && !generating && !done && !streamedContent) {
+    if (!selectedTopic || generating) return;
+    retryRef.current = 0;
+
+    // 选题/框架/策略发生变化时，清理旧文并按新上下文写作
+    if (!contextMatched) {
+      setArticle({
+        topic: selectedTopic,
+        framework: selectedFramework ?? undefined,
+        enhanceStrategy: selectedStrategy ?? undefined,
+        keywords: selectedTopic.keywords ?? [],
+        title: selectedTopic.title,
+        content: "",
+        wordCount: 0,
+      });
+      setStreamedContent("");
+      setProgress(0);
+      setDone(false);
+      return;
+    }
+
+    if (!article.content && !done && !streamedContent) {
       void startWriting();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    selectedTopic,
+    selectedFramework,
+    selectedStrategy,
+    contextMatched,
+    article.content,
+    generating,
+    done,
+    streamedContent,
+    setArticle,
+    startWriting,
+  ]);
 
   useEffect(() => {
     if (generating) return;
@@ -278,8 +381,6 @@ export function WritingStep() {
             >
               {runtime.aiMode === "live"
                 ? `真实 AI · ${runtime.aiProvider}`
-                : runtime.aiMode === "mock"
-                ? "Mock AI 模式"
                 : "AI 模式待检测"}
             </Badge>
             {streamedContent && (

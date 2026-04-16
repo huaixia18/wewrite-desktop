@@ -1,22 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 // Markdown → 微信 HTML 转换器
 function markdownToWechatHtml(md: string, theme: string): string {
-  let html = md;
+  let html = escapeHtml(md);
 
   // 基础转译
   html = html
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/^## (.+)$/gm, "<section><h2>$1</h2>")
-    .replace(/^### (.+)$/gm, "<section><h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(/`(.+?)`/g, "<code>$1</code>")
     .replace(/^> (.+)$/gm, "<blockquote><p>$1</p></blockquote>")
     .replace(/^---$/gm, "<hr/>")
-    .replace(/<!-- (.+?) -->/g, '<p class="editor-tip">✏️ $1</p>');
+    .replace(/&lt;!-- (.+?) --&gt;/g, '<p class="editor-tip">✏️ $1</p>');
 
   // 容器语法支持
   html = html.replace(
@@ -80,7 +86,7 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
-  const { title, content, theme, coverImageUrl } = await req.json();
+  const { content, theme } = await req.json();
   const html = markdownToWechatHtml(content || "", theme || "professional-clean");
 
   return NextResponse.json({ html });

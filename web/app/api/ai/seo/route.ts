@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { createAIClient, type AIProvider } from "@/lib/ai";
+import { createAIClient } from "@/lib/ai";
+import { isProviderConfigured, normalizeProvider, resolveUserModelForTier } from "@/lib/ai-models";
+import { resolveSubscriptionTier } from "@/lib/subscription";
 
 const SEO_SYSTEM_PROMPT = `你是一个微信公众号 SEO 专家。请根据文章内容生成最优的 SEO 元数据。`;
 
@@ -27,36 +29,36 @@ ${excerpt}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { content, title } = await req.json();
 
   const userConfig = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { aiProvider: true },
+    select: {
+      aiProvider: true,
+      model: true,
+      subscriptionTier: true,
+      subscriptionStatus: true,
+      subscriptionEndsAt: true,
+    },
   });
 
-  const aiProvider = userConfig?.aiProvider === "openai" ? "openai" : "anthropic";
+  const aiProvider = normalizeProvider(userConfig?.aiProvider);
+  const tier = resolveSubscriptionTier(userConfig);
+  const model = resolveUserModelForTier(aiProvider, userConfig?.model, tier);
 
-  const apiKeyOrEnv =
-    process.env[`${aiProvider.toUpperCase()}_API_KEY`] ||
-    "";
-
-  if (!apiKeyOrEnv || apiKeyOrEnv.includes("placeholder")) {
-    // Mock fallback
-    const titleWords = (title || content.slice(0, 50)).split(/[，。、]/).filter(Boolean);
-    return NextResponse.json({
-      seoTitle: `${titleWords[0] || "深度解读"}：${titleWords[1] || "这个被很多人忽视的趋势"}`,
-      abstract: content.slice(0, 60).replace(/[#*`>\n]/g, "") + "...",
-      tags: ["AI", "创作", "内容", "效率", "未来"],
-      meta: { mode: "mock", provider: "mock" },
-    });
+  if (!isProviderConfigured(aiProvider)) {
+    return NextResponse.json(
+      { error: "AI 服务未配置，请先在服务端配置有效的网关 Key。" },
+      { status: 503 }
+    );
   }
 
   try {
-    const client = createAIClient(aiProvider as AIProvider);
+    const client = createAIClient(aiProvider);
     const text = await client.chat({
-      model: aiProvider === "anthropic" ? "claude-sonnet-4-7-20250514" : "gpt-4o",
+      model,
       messages: [
         { role: "system", content: SEO_SYSTEM_PROMPT },
         { role: "user", content: buildSEOPrompt({ title, content }) },

@@ -41,7 +41,7 @@ export function StepStatusAlert({
   onAction,
 }: {
   title: string;
-  description: string;
+  description?: string;
   variant?: Variant;
   actionLabel?: string;
   onAction?: () => void;
@@ -57,9 +57,11 @@ export function StepStatusAlert({
           <p className={cn("text-[14px] font-semibold tracking-[-0.224px]", config.title)}>
             {title}
           </p>
-          <p className="mt-1 text-[13px] leading-[1.45] tracking-[-0.224px] text-[rgba(0,0,0,0.56)]">
-            {description}
-          </p>
+          {description ? (
+            <p className="mt-1 text-[13px] leading-[1.45] tracking-[-0.224px] text-[rgba(0,0,0,0.56)]">
+              {description}
+            </p>
+          ) : null}
           {actionLabel && onAction && (
             <Button
               variant="outline"

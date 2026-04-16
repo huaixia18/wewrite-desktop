@@ -18,31 +18,52 @@ export function WorkspaceTopbar() {
   const label = pageLabelMap[pathname] ?? "控制台";
 
   return (
-    <header className="sticky top-0 z-30 border-b border-black/[0.06] bg-white/86 backdrop-blur-md">
-      <div className="flex h-16 items-center justify-between px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
+      <div className="flex h-14 items-center justify-between pl-14 pr-4 sm:h-[58px] sm:px-6 lg:px-7">
         <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-[0.12em] text-[rgba(0,0,0,0.36)]">Workspace</p>
-          <div className="mt-0.5 flex items-center gap-2">
-            <h1 className="truncate text-[18px] font-semibold tracking-[-0.24px] text-[#111827]">{label}</h1>
-            <Badge variant="soft" className="bg-[#2563eb]/10 text-[#2563eb]">控制台</Badge>
+          <p className="hidden text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:block">
+            Workspace
+          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="truncate text-[16px] font-semibold tracking-[-0.28px] text-slate-900 sm:text-[18px]">
+              {label}
+            </h1>
+            <Badge
+              variant="soft"
+              className="hidden border-0 bg-blue-50 text-[11px] font-medium text-blue-600 sm:inline-flex"
+            >
+              控制台
+            </Badge>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Link href="/pricing">
-            <Button variant="outline" size="sm" className="h-9 gap-2 border-black/[0.08]">
-              <CreditCard className="h-4 w-4" />
-              订阅
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 border-slate-200 px-2.5 text-slate-600 hover:bg-slate-50 hover:text-slate-900 sm:h-8 sm:px-3"
+            >
+              <CreditCard className="h-3.5 w-3.5" />
+              <span className="hidden text-[13px] sm:inline">订阅</span>
             </Button>
           </Link>
           <Link href="/settings">
-            <Button variant="outline" size="sm" className="h-9 gap-2 border-black/[0.08]">
-              <Settings className="h-4 w-4" />
-              设置
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 border-slate-200 px-2.5 text-slate-600 hover:bg-slate-50 hover:text-slate-900 sm:h-8 sm:px-3"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              <span className="hidden text-[13px] sm:inline">设置</span>
             </Button>
           </Link>
-          <Button variant="outline" size="icon" className="h-9 w-9 border-black/[0.08]">
-            <Bell className="h-4 w-4" />
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+          >
+            <Bell className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>

@@ -5,20 +5,20 @@ import { persist } from "zustand/middleware";
 
 // ─── 步骤定义 ────────────────────────────────────────────────────────────
 export const PIPELINE_STEPS = [
-  { id: 1, name: "热点抓取", description: "获取实时热点" },
-  { id: 2, name: "选题", description: "选择并分析热点" },
-  { id: 3, name: "框架", description: "确定文章结构" },
-  { id: 4, name: "内容增强", description: "素材采集与增强" },
-  { id: 5, name: "写作", description: "AI 生成正文" },
-  { id: 6, name: "去AI化", description: "Humanizer 29规则" },
-  { id: 7, name: "SEO + 配图", description: "标题摘要与封面" },
-  { id: 8, name: "排版发布", description: "预览并推送" },
+  { id: 1, name: "环境+配置", description: "检查 AI 与写作配置" },
+  { id: 2, name: "选题", description: "热点抓取与选题决策" },
+  { id: 3, name: "框架+素材", description: "确定框架并采集素材" },
+  { id: 4, name: "写作", description: "生成正文初稿" },
+  { id: 5, name: "SEO+验证", description: "SEO 优化与质量验证" },
+  { id: 6, name: "视觉AI", description: "封面与配图生成" },
+  { id: 7, name: "排版+发布", description: "预览排版并推送" },
+  { id: 8, name: "收尾", description: "归档本次任务" },
 ] as const;
 
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];
 
 export type RunMode = "auto" | "interactive" | "step";
-export type RuntimeMode = "unknown" | "live" | "mock" | "fallback";
+export type RuntimeMode = "unknown" | "live" | "fallback";
 
 // ─── 热点数据 ─────────────────────────────────────────────────────────────
 export interface Hotspot {
@@ -73,6 +73,8 @@ export interface HumanizerReport {
     content: number;
     language: number;
     style: number;
+    communication?: number;
+    filler?: number;
   };
 }
 
@@ -170,7 +172,14 @@ export const usePipelineStore = create<PipelineState>()(
 
       setCurrentStep: (step) => set({ currentStep: step, stepDone: false }),
       setRunMode: (mode) => set({ runMode: mode }),
-      setHotspots: (hotspots) => set({ hotspots }),
+      setHotspots: (hotspots) =>
+        set((state) => {
+          const validIds = new Set(hotspots.map((item) => item.id));
+          return {
+            hotspots,
+            selectedHotspots: state.selectedHotspots.filter((item) => validIds.has(item.id)),
+          };
+        }),
       setHotspotsLoading: (loading) => set({ hotspotsLoading: loading }),
       toggleHotspot: (hotspot) =>
         set((state) => {
@@ -203,7 +212,7 @@ export const usePipelineStore = create<PipelineState>()(
 
       nextStep: () => {
         const { currentStep, runMode } = get();
-        if (runMode === "step" || runMode === "interactive") {
+        if (runMode === "step") {
           return;
         }
         if (currentStep < PIPELINE_STEPS.length) {

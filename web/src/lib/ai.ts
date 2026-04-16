@@ -7,6 +7,7 @@
  *   await client.chat({ messages: [...], stream: false })
  *
  * 代理配置（环境变量）：
+ *   AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY — 全厂商统一网关（推荐）
  *   ANTHROPIC_BASE_URL / OPENAI_BASE_URL — 代理或自定义端点
  *   ANTHROPIC_API_KEY   / OPENAI_API_KEY   — API Key
  *
@@ -16,14 +17,58 @@
  */
 
 export type AIProvider = "anthropic" | "openai";
+type AITransport = "anthropic" | "openai";
 
 // ─── 配置 ────────────────────────────────────────────────────────────────
 
 interface AIConfig {
   provider: AIProvider;
+  transport: AITransport;
   apiKey: string;
   baseUrl: string;
   model: string;
+}
+
+function hasUsableApiKey(apiKey: string): boolean {
+  return Boolean(apiKey && !apiKey.includes("placeholder"));
+}
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, "");
+}
+
+function getSharedGatewayApiKey(): string {
+  return (
+    process.env.AI_GATEWAY_API_KEY ??
+    process.env.OPENAI_API_KEY ??
+    process.env.ANTHROPIC_API_KEY ??
+    ""
+  ).trim();
+}
+
+function getSharedGatewayBaseUrl(): string {
+  return (
+    process.env.AI_GATEWAY_BASE_URL ??
+    process.env.OPENAI_BASE_URL ??
+    process.env.ANTHROPIC_BASE_URL ??
+    ""
+  ).trim();
+}
+
+function isAnthropicNativeBase(baseUrl: string): boolean {
+  return /(^https?:\/\/)?api\.anthropic\.com(\/|$)/i.test(baseUrl.trim());
+}
+
+function buildOpenAIChatUrl(baseUrl: string): string {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (/\/v1$/i.test(normalized)) return `${normalized}/chat/completions`;
+  return `${normalized}/v1/chat/completions`;
+}
+
+function buildAnthropicMessagesUrl(baseUrl: string): string {
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (/\/v1$/i.test(normalized)) return `${normalized}/messages`;
+  return `${normalized}/v1/messages`;
 }
 
 function getConfig(
@@ -31,20 +76,42 @@ function getConfig(
   userApiKey?: string,
   userBaseUrl?: string
 ): AIConfig {
-  const key = userApiKey ?? process.env[`${provider.toUpperCase()}_API_KEY`] ?? "";
+  const gatewayApiKey = (process.env.AI_GATEWAY_API_KEY ?? "").trim();
+  const providerApiKey = (process.env[`${provider.toUpperCase()}_API_KEY`] ?? "").trim();
+  const sharedApiKey = getSharedGatewayApiKey();
+  const key =
+    (userApiKey ?? "").trim() ||
+    (hasUsableApiKey(gatewayApiKey) ? gatewayApiKey : "") ||
+    (hasUsableApiKey(providerApiKey) ? providerApiKey : "") ||
+    sharedApiKey;
+
+  const gatewayBaseUrl = (process.env.AI_GATEWAY_BASE_URL ?? "").trim();
+  const providerBaseUrl = process.env[`${provider.toUpperCase()}_BASE_URL`] ?? "";
+  const sharedBaseUrl = getSharedGatewayBaseUrl();
 
   // 优先级：用户自定义端点 > 环境变量 > 官方默认值
   const baseUrl =
-    userBaseUrl ||
-    process.env[`${provider.toUpperCase()}_BASE_URL`] ||
+    normalizeBaseUrl(
+      userBaseUrl ||
+        gatewayBaseUrl ||
+        (hasUsableApiKey(providerApiKey) ? providerBaseUrl : "") ||
+        sharedBaseUrl ||
+        providerBaseUrl
+    ) ||
     (provider === "anthropic"
       ? "https://api.anthropic.com"
       : "https://api.openai.com");
 
-  const defaultModel =
-    provider === "anthropic" ? "claude-sonnet-4-7-20250514" : "gpt-4o";
+  const transport: AITransport =
+    provider === "anthropic" && isAnthropicNativeBase(baseUrl)
+      ? "anthropic"
+      : "openai";
 
-  return { provider, apiKey: key, baseUrl, model: defaultModel };
+  const envModel = process.env[`${provider.toUpperCase()}_MODEL`]?.trim();
+  const defaultModel =
+    envModel || (provider === "anthropic" ? "claude-sonnet-4-7-20250514" : "gpt-4o");
+
+  return { provider, transport, apiKey: key, baseUrl, model: defaultModel };
 }
 
 // ─── 请求 / 响应类型 ────────────────────────────────────────────────────
@@ -79,22 +146,21 @@ async function anthropicChat(
   opts: ChatOptions
 ): Promise<Response> {
   const { messages, maxTokens = 4096, temperature = 0.7, stream, signal } = opts;
+  const systemMessage = messages.find((m) => m.role === "system")?.content;
 
   const body: Record<string, unknown> = {
     model: opts.model ?? config.model,
     max_tokens: maxTokens,
     temperature,
     messages: messages.filter((m) => m.role !== "system"),
-    ...(messages.find((m) => m.role === "system")
-      ? { system: messages.find((m) => m.role === "system")!.content }
-      : {}),
+    ...(systemMessage ? { system: systemMessage } : {}),
   };
 
   if (stream) {
     body.stream = true;
   }
 
-  const url = `${config.baseUrl}/v1/messages`;
+  const url = buildAnthropicMessagesUrl(config.baseUrl);
 
   return fetch(url, {
     method: "POST",
@@ -125,7 +191,7 @@ async function openaiChat(
     ...(stream ? { stream: true } : {}),
   };
 
-  const url = `${config.baseUrl}/v1/chat/completions`;
+  const url = buildOpenAIChatUrl(config.baseUrl);
 
   return fetch(url, {
     method: "POST",
@@ -168,7 +234,7 @@ export class AIClient {
     let buffer = "";
 
     try {
-      if (this.config.provider === "anthropic") {
+      if (this.config.transport === "anthropic") {
         // Anthropic SSE: data: {"type":"content_block_delta","..."
         while (true) {
           const { done, value } = await reader.read();
@@ -268,7 +334,7 @@ export class AIClient {
 
     const data = await res.json();
 
-    if (this.config.provider === "anthropic") {
+    if (this.config.transport === "anthropic") {
       return data.content?.[0]?.text ?? "";
     } else {
       return data.choices?.[0]?.message?.content ?? "";
@@ -276,7 +342,7 @@ export class AIClient {
   }
 
   private async send(opts: ChatOptions, stream: boolean): Promise<Response> {
-    if (this.config.provider === "anthropic") {
+    if (this.config.transport === "anthropic") {
       return anthropicChat(this.config, { ...opts, stream });
     } else {
       return openaiChat(this.config, { ...opts, stream });
@@ -296,22 +362,19 @@ export function toSSEStream(
   generator: AsyncGenerator<ChatChunk>
 ): ReadableStream {
   const encoder = new TextEncoder();
+  const encodeSSE = (payload: string) => encoder.encode(`data: ${payload}\n\n`);
 
   return new ReadableStream({
     async start(controller) {
       try {
         for await (const chunk of generator) {
           if (chunk.type === "content" && chunk.text) {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "content", text: chunk.text })}\n`)
-            );
+            controller.enqueue(encodeSSE(JSON.stringify({ type: "content", text: chunk.text })));
           } else if (chunk.type === "done") {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n`));
-            controller.enqueue(encoder.encode("data: [DONE]\n"));
+            controller.enqueue(encodeSSE(JSON.stringify({ type: "done" })));
+            controller.enqueue(encodeSSE("[DONE]"));
           } else if (chunk.type === "error") {
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "error", text: chunk.text })}\n`)
-            );
+            controller.enqueue(encodeSSE(JSON.stringify({ type: "error", text: chunk.text })));
           }
         }
       } finally {

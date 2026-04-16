@@ -3,6 +3,10 @@ import { auth } from "@/auth";
 import { spawn } from "child_process";
 import { join } from "path";
 
+function buildHotspotId(source: string, title: string): string {
+  return Buffer.from(`${source}:${title}`, "utf8").toString("base64url");
+}
+
 export async function GET() {
   const session = await auth();
   if (!session) {
@@ -13,7 +17,7 @@ export async function GET() {
     // 调用 Python 脚本抓取真实热点
     const scriptPath = join(process.cwd(), "scripts", "fetch_hotspots.py");
     const raw = await new Promise<string>((resolve, reject) => {
-      const proc = spawn("python3", [scriptPath, "--limit", "20"]);
+      const proc = spawn("python3", [scriptPath, "--limit", "12"]);
       let stdout = "";
       let stderr = "";
       proc.stdout.on("data", (d) => (stdout += d));
@@ -34,7 +38,7 @@ export async function GET() {
       hot_normalized: number;
       description?: string;
     }) => ({
-      id: Buffer.from(item.title.slice(0, 20)).toString("base64"),
+      id: buildHotspotId(item.source, item.title),
       platform:
         item.source === "微博"
           ? "weibo"
@@ -56,17 +60,13 @@ export async function GET() {
       meta: { mode: "live" },
     });
   } catch (err) {
-    // 抓取失败时返回优雅的兜底数据
-    console.error("[/api/topics/hotspots]", err instanceof Error ? err.message : String(err));
-    return NextResponse.json({
-      hotspots: [
-        { id: "1", platform: "weibo", title: "微信重磅更新：公众号可跳转小红书", score: 98, keywords: ["微信", "公众号", "小红书"], trend: "rising" },
-        { id: "2", platform: "toutiao", title: "AI 写作工具月活突破 5000 万", score: 95, keywords: ["AI", "写作工具"], trend: "rising" },
-        { id: "3", platform: "baidu", title: "Claude 4 发布，编程能力超越 GPT-5", score: 92, keywords: ["Claude", "AI", "GPT"], trend: "rising" },
-      ],
-      sources: [],
-      error: "抓取失败，使用兜底数据",
-      meta: { mode: "fallback" },
-    });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[/api/topics/hotspots]", message);
+    return NextResponse.json(
+      {
+        error: `热点抓取失败：${message}`,
+      },
+      { status: 502 }
+    );
   }
 }

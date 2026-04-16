@@ -25,18 +25,23 @@ import {
 
 /* ─── Apple Step: Hotspot ──────────────────────────────────────────────── */
 const platformLabels: Record<string, { label: string; color: string; bg: string }> = {
-  weibo: { label: "微博", color: "#ff8200", bg: "bg-[#ff8200]/10" },
-  toutiao: { label: "头条", color: "#ea0d11", bg: "bg-[#ea0d11]/10" },
-  baidu: { label: "百度", color: "#2932e1", bg: "bg-[#2932e1]/10" },
+  weibo: { label: "微博", color: "#475569", bg: "bg-slate-100" },
+  toutiao: { label: "头条", color: "#475569", bg: "bg-slate-100" },
+  baidu: { label: "百度", color: "#475569", bg: "bg-slate-100" },
 };
 
 const trendConfig = {
-  rising: { icon: TrendingUp, label: "上升", color: "#ff3b30" },
-  stable: { icon: Minus, label: "持平", color: "#8e8e93" },
-  fading: { icon: TrendingDown, label: "下降", color: "#0071e3" },
+  rising: { icon: TrendingUp, label: "上升", color: "#334155" },
+  stable: { icon: Minus, label: "持平", color: "#64748b" },
+  fading: { icon: TrendingDown, label: "下降", color: "#64748b" },
 };
 
-export function HotspotStep() {
+interface HotspotStepProps {
+  expectedStep?: number;
+  onProceed?: () => void;
+}
+
+export function HotspotStep({ expectedStep = 1, onProceed }: HotspotStepProps) {
   const {
     hotspots,
     selectedHotspots,
@@ -50,14 +55,18 @@ export function HotspotStep() {
     toggleHotspot,
     selectAllHotspots,
     clearSelectedHotspots,
+    setTopics,
+    setSelectedTopic,
     setRuntime,
   } = usePipelineStore();
 
   const allSelected = hotspots.length > 0 && selectedHotspots.length === hotspots.length;
   const [error, setError] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const visibleHotspots = showAll ? hotspots : hotspots.slice(0, 8);
 
   const fetchHotspots = useCallback(async () => {
-    if (currentStep !== 1) return;
+    if (currentStep !== expectedStep) return;
     setError("");
     setHotspotsLoading(true);
     setProgressText("正在抓取热点...");
@@ -72,7 +81,7 @@ export function HotspotStep() {
           keywords: string[];
           trend: "rising" | "stable" | "fading";
         }>;
-        meta?: { mode?: "live" | "fallback" };
+        meta?: { mode?: "live" };
       }>("/api/topics/hotspots");
       setHotspots((data.hotspots ?? []).map((hotspot) => ({ ...hotspot, url: hotspot.url ?? "" })));
       setRuntime({ hotspotMode: data.meta?.mode ?? "unknown" });
@@ -80,47 +89,64 @@ export function HotspotStep() {
       if ((data.hotspots ?? []).length > 0) {
         markStepDone();
       }
-      if (data.meta?.mode === "fallback") {
-        toast.warning("热点服务暂不可用，已自动使用兜底数据");
-      }
     } catch {
       setHotspots([]);
-      setRuntime({ hotspotMode: "fallback" });
+      setRuntime({ hotspotMode: "unknown" });
       setError("热点抓取失败，可能是网络或热点源暂不可用。");
       setProgressText("热点抓取失败，请检查网络");
       toast.error("热点抓取失败，请稍后重试");
     } finally {
       setHotspotsLoading(false);
     }
-  }, [currentStep, markStepDone, setHotspots, setHotspotsLoading, setProgressText, setRuntime]);
+  }, [
+    currentStep,
+    expectedStep,
+    markStepDone,
+    setHotspots,
+    setHotspotsLoading,
+    setProgressText,
+    setRuntime,
+  ]);
 
   useEffect(() => {
-    if (currentStep === 1 && hotspots.length === 0 && !hotspotsLoading) {
+    if (currentStep === expectedStep && hotspots.length === 0 && !hotspotsLoading) {
       void fetchHotspots();
     }
-  }, [currentStep, fetchHotspots, hotspots.length, hotspotsLoading]);
+  }, [currentStep, expectedStep, fetchHotspots, hotspots.length, hotspotsLoading]);
 
   // 缓存命中时也标记完成
   useEffect(() => {
-    if (currentStep === 1 && hotspots.length > 0) {
+    if (currentStep === expectedStep && hotspots.length > 0) {
       markStepDone();
     }
-  }, [currentStep, hotspots.length, markStepDone]);
+  }, [currentStep, expectedStep, hotspots.length, markStepDone]);
+
+  useEffect(() => {
+    if (hotspots.length <= 8) {
+      setShowAll(false);
+    }
+  }, [hotspots.length]);
 
   const handleNext = () => {
     if (selectedHotspots.length === 0) return;
+    setTopics([]);
+    setSelectedTopic(null);
+    if (onProceed) {
+      onProceed();
+      return;
+    }
     nextStep();
   };
 
   return (
-    <div className="max-w-[880px] mx-auto px-8 py-8 space-y-6">
+    <div className="max-w-[1024px] mx-auto px-8 py-7 space-y-6 lg:h-full lg:flex lg:flex-col lg:space-y-0 lg:gap-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-[28px] font-semibold tracking-[0.196px] leading-[1.14] text-[#1d1d1f]">
+          <h2 className="saas-title text-[30px] leading-[1.14]">
             热点抓取
           </h2>
-          <p className="text-[14px] font-normal tracking-[-0.224px] text-[rgba(0,0,0,0.48)] mt-1">
+          <p className="saas-muted text-[14px] tracking-[-0.224px] mt-1">
             点击卡片选中热点，选中的热点将用于生成选题
           </p>
         </div>
@@ -130,7 +156,7 @@ export function HotspotStep() {
             size="sm"
             onClick={fetchHotspots}
             disabled={hotspotsLoading}
-            className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px]"
+            className="h-9 gap-1.5 border-slate-200 text-[14px]"
           >
             <RefreshCw className={cn("h-4 w-4", hotspotsLoading && "animate-spin")} />
             刷新
@@ -140,7 +166,7 @@ export function HotspotStep() {
               variant="outline"
               size="sm"
               onClick={allSelected ? clearSelectedHotspots : selectAllHotspots}
-              className="h-9 gap-1.5 border-[rgba(0,0,0,0.08)] text-[14px]"
+              className="h-9 gap-1.5 border-slate-200 text-[14px]"
             >
               <CheckCheck className="h-4 w-4" />
               {allSelected ? "取消全选" : "全选"}
@@ -150,12 +176,12 @@ export function HotspotStep() {
       </div>
 
       {/* Platform badges + count */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {Object.entries(platformLabels).map(([key, val]) => (
           <Badge
             key={key}
             variant="outline"
-            className={cn("text-[12px] font-medium tracking-[-0.12px]", "border-0", val.bg)}
+            className={cn("text-[12px] font-medium tracking-[-0.12px]", "border border-slate-200", val.bg)}
             style={{ color: val.color }}
           >
             {val.label}
@@ -168,10 +194,20 @@ export function HotspotStep() {
         {selectedHotspots.length > 0 && (
           <>
             <Separator orientation="vertical" className="h-4 mx-1" />
-            <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-[#0071e3]/10 text-[#0071e3] border-0">
+            <Badge className="text-[12px] font-medium tracking-[-0.12px] bg-blue-50 text-blue-600 border-0">
               已选 {selectedHotspots.length} 条
             </Badge>
           </>
+        )}
+        {hotspots.length > 8 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAll((prev) => !prev)}
+            className="h-7 px-2 text-[12px] text-[rgba(0,0,0,0.52)]"
+          >
+            {showAll ? "收起" : `展开全部（${hotspots.length}）`}
+          </Button>
         )}
       </div>
 
@@ -196,12 +232,14 @@ export function HotspotStep() {
 
       {/* Hotspot list */}
       {!hotspotsLoading && hotspots.length > 0 && (
-        <div className="space-y-2">
-          {hotspots.map((hotspot, index) => {
+        <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          {visibleHotspots.map((hotspot, index) => {
             const platform = platformLabels[hotspot.platform];
             const trend = trendConfig[hotspot.trend];
             const TrendIcon = trend.icon;
-            const isTop3 = index < 3;
+            const absoluteIndex = hotspots.findIndex((item) => item.id === hotspot.id);
+            const isTop3 = absoluteIndex > -1 && absoluteIndex < 3;
             const isSelected = selectedHotspots.some((h) => h.id === hotspot.id);
 
             return (
@@ -209,12 +247,12 @@ export function HotspotStep() {
                 key={hotspot.id}
                 onClick={() => toggleHotspot(hotspot)}
                 className={cn(
-                  "bg-white rounded-2xl p-5 cursor-pointer transition-all duration-200",
+                  "saas-card p-5 cursor-pointer transition-all duration-200",
                   "border-l-4",
                   isSelected
-                    ? "ring-2 ring-[#0071e3] border-l-[#0071e3]"
-                    : "ring-1 ring-black/[0.06] hover:ring-[#0071e3]/40",
-                  isTop3 && !isSelected ? "border-l-[#ff9500]" : ""
+                    ? "ring-2 ring-blue-500/30 border-l-blue-500"
+                    : "ring-1 ring-slate-200 hover:ring-blue-300/40",
+                  isTop3 && !isSelected ? "border-l-slate-300" : ""
                 )}
               >
                 <div className="flex items-start gap-4">
@@ -230,14 +268,14 @@ export function HotspotStep() {
                   {/* Rank */}
                   <div
                     className={cn(
-                      "flex items-center justify-center w-8 h-8 rounded-full shrink-0 mt-0.5",
+                      "flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5",
                       "text-[13px] font-semibold tracking-[-0.224px]",
                       isTop3
-                        ? "bg-[#ff9500] text-white"
-                        : "bg-[#f5f5f7] text-[rgba(0,0,0,0.32)]"
+                        ? "bg-slate-200 text-slate-700"
+                        : "bg-slate-100 text-slate-400"
                     )}
                   >
-                    {index + 1}
+                    {(absoluteIndex > -1 ? absoluteIndex : index) + 1}
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -251,7 +289,7 @@ export function HotspotStep() {
                         {platform.label}
                       </Badge>
                       {isTop3 && (
-                        <Badge className="text-[11px] font-medium tracking-[-0.12px] border-0 bg-[#ff3b30]/10 text-[#ff3b30]">
+                        <Badge className="text-[11px] font-medium tracking-[-0.12px] border border-slate-200 bg-slate-50 text-slate-600">
                           <Flame className="h-2.5 w-2.5 mr-0.5" />
                           TOP
                         </Badge>
@@ -266,14 +304,14 @@ export function HotspotStep() {
                       {/* Score bar */}
                       <div className="ml-auto flex items-center gap-2">
                         <Progress value={hotspot.score} className="w-[80px] h-[3px]" />
-                        <span className="text-[12px] font-mono text-[rgba(0,0,0,0.32)] w-5 text-right">
+                        <span className="text-[12px] font-mono text-slate-400 w-5 text-right">
                           {hotspot.score}
                         </span>
                       </div>
                     </div>
 
                     {/* Title */}
-                    <p className="text-[17px] font-semibold tracking-[-0.374px] leading-[1.3] text-[#1d1d1f]">
+                    <p className="text-[16px] font-semibold tracking-[-0.3px] leading-[1.35] text-slate-900">
                       {hotspot.title}
                     </p>
 
@@ -283,7 +321,7 @@ export function HotspotStep() {
                         <Badge
                           key={kw}
                           variant="outline"
-                          className="text-[11px] tracking-[-0.12px] bg-[#f5f5f7] text-[rgba(0,0,0,0.48)] border-0"
+                          className="text-[11px] tracking-[-0.12px] bg-slate-100 text-slate-500 border-0"
                         >
                           {kw}
                         </Badge>
@@ -294,6 +332,7 @@ export function HotspotStep() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -316,7 +355,7 @@ export function HotspotStep() {
 
       {/* CTA */}
       {selectedHotspots.length > 0 && (
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-end pt-2 lg:pt-0">
           <Button
             variant="pill-filled"
             size="pill-sm"

@@ -3,7 +3,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import Credentials from "next-auth/providers/credentials";
 import Wechat from "next-auth/providers/wechat";
 import { prisma } from "@/lib/prisma";
-import { compare, hash } from "bcryptjs";
+import { compare } from "bcryptjs";
 import type { NextAuthConfig } from "next-auth";
 
 export const authConfig: NextAuthConfig = {
